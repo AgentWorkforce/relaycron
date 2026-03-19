@@ -5,26 +5,6 @@ import { hashKey } from "../middleware/auth.js";
 import type { Env } from "../types.js";
 import type { WsMessage } from "@agentcron/types";
 
-// In-memory connected clients (per worker isolate)
-// Maps api_key_id -> Set of WebSocket connections
-const connectedClients = new Map<string, Set<WebSocket>>();
-
-export function broadcastToKey(apiKeyId: string, message: WsMessage): number {
-  const clients = connectedClients.get(apiKeyId);
-  if (!clients) return 0;
-
-  let sent = 0;
-  for (const ws of clients) {
-    try {
-      ws.send(JSON.stringify(message));
-      sent++;
-    } catch {
-      clients.delete(ws);
-    }
-  }
-  return sent;
-}
-
 const wsRouter = new Hono<{ Bindings: Env }>();
 
 wsRouter.get("/", async (c) => {
@@ -48,7 +28,6 @@ wsRouter.get("/", async (c) => {
   server.accept();
 
   let authenticated = false;
-  let apiKeyId: string | null = null;
   const authTimeout = setTimeout(() => {
     if (!authenticated) {
       server.send(
@@ -91,14 +70,7 @@ wsRouter.get("/", async (c) => {
           }
 
           authenticated = true;
-          apiKeyId = key.id;
           clearTimeout(authTimeout);
-
-          // Register connection
-          if (!connectedClients.has(apiKeyId)) {
-            connectedClients.set(apiKeyId, new Set());
-          }
-          connectedClients.get(apiKeyId)!.add(server);
 
           server.send(
             JSON.stringify({ type: "auth_ok", agent_id: key.id })
@@ -123,12 +95,6 @@ wsRouter.get("/", async (c) => {
 
   server.addEventListener("close", () => {
     clearTimeout(authTimeout);
-    if (apiKeyId) {
-      connectedClients.get(apiKeyId)?.delete(server);
-      if (connectedClients.get(apiKeyId)?.size === 0) {
-        connectedClients.delete(apiKeyId);
-      }
-    }
   });
 
   return new Response(null, {

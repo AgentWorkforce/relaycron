@@ -73,11 +73,11 @@ export class SchedulerDO implements DurableObject {
 
       await recordExecution(db, scheduleId, "webhook", result);
     } else if (schedule.transport_type === "websocket") {
-      // For WebSocket transport, we broadcast to connected clients
-      // via a fetch to the worker's internal WS broadcast endpoint
-      // The execution is recorded with success if there are listeners
+      // WebSocket transport is not yet wired end-to-end across isolates/DO boundaries.
       await recordExecution(db, scheduleId, "websocket", {
-        status: "success",
+        status: "failure",
+        error:
+          "WebSocket transport delivery is not yet available end-to-end; use webhook transport.",
         duration_ms: 0,
       });
     }

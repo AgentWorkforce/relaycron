@@ -90,6 +90,20 @@ schedulesRouter.post("/", async (c) => {
   const now = new Date().toISOString();
   const auth = c.get("auth");
 
+  if (data.transport.type === "websocket") {
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: "not_supported",
+          message:
+            "WebSocket transport delivery is not yet available end-to-end. Use webhook transport.",
+        },
+      },
+      400
+    );
+  }
+
   const transportConfig = { ...data.transport };
 
   const record = {
@@ -255,6 +269,19 @@ schedulesRouter.patch("/:id", async (c) => {
     updates.metadata = JSON.stringify(data.metadata);
 
   if (data.transport !== undefined) {
+    if (data.transport.type === "websocket") {
+      return c.json(
+        {
+          ok: false,
+          error: {
+            code: "not_supported",
+            message:
+              "WebSocket transport delivery is not yet available end-to-end. Use webhook transport.",
+          },
+        },
+        400
+      );
+    }
     updates.transport_type = data.transport.type;
     updates.transport_config = JSON.stringify(data.transport);
   }
@@ -288,10 +315,25 @@ schedulesRouter.patch("/:id", async (c) => {
     .set(updates)
     .where(eq(schedules.id, c.req.param("id")));
 
-  // Update alarm if next_run_at changed
-  if (updates.next_run_at !== undefined) {
+  // Pause/resume semantics must also update Durable Object alarms.
+  // - pause: cancel any pending alarm
+  // - resume: recompute and re-arm next run if possible
+  if (data.status === "paused") {
+    updates.next_run_at = null;
+  } else if (data.status === "active" && existing.status !== "active") {
+    updates.next_run_at = computeNextRunAt(
+      existing.schedule_type,
+      (updates.cron_expression as string | undefined) ?? existing.cron_expression,
+      (updates.scheduled_at as string | undefined) ?? existing.scheduled_at,
+      (updates.timezone as string | undefined) ?? existing.timezone
+    );
+  }
+
+  // Update alarm if next_run_at changed or status toggled.
+  if (updates.next_run_at !== undefined || data.status !== undefined) {
     const doId = c.env.SCHEDULER_DO.idFromName(c.req.param("id"));
     const stub = c.env.SCHEDULER_DO.get(doId);
+
     if (updates.next_run_at) {
       await stub.fetch("http://internal/set-alarm", {
         method: "POST",
@@ -350,6 +392,25 @@ schedulesRouter.delete("/:id", async (c) => {
 
   return c.json({ ok: true, data: { deleted: true } });
 });
+
+function computeNextRunAt(
+  scheduleType: "once" | "cron",
+  cronExpression: string | null,
+  scheduledAt: string | null,
+  timezone: string
+): string | null {
+  if (scheduleType === "cron" && cronExpression) {
+    const next = getNextCronDate(cronExpression, timezone);
+    return next ? next.toISOString() : null;
+  }
+
+  if (scheduleType === "once" && scheduledAt) {
+    // One-time schedules in the past should not be re-armed on resume.
+    return new Date(scheduledAt).getTime() > Date.now() ? scheduledAt : null;
+  }
+
+  return null;
+}
 
 function formatSchedule(row: typeof schedules.$inferSelect) {
   return {
