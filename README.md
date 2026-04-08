@@ -9,17 +9,19 @@ Turbo monorepo with npm workspaces:
 ```
 packages/
   types/    - Shared Zod schemas and TypeScript types (@agentcron/types)
-  server/   - Cloudflare Worker API with Hono.js (@agentcron/server)
+  local/    - Standalone Node.js server with SQLite (@agentcron/local)
+  server/   - Cloudflare Worker for hosted deployment (@agentcron/server)
   sdk/      - TypeScript SDK for consumers (@agentcron/sdk)
 ```
 
-## Local Development
+## Running Locally
+
+The local server runs as a standalone Node.js process with better-sqlite3 — no Cloudflare, Wrangler, or cloud dependencies required.
 
 ### Prerequisites
 
 - Node.js >= 18
 - npm
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (installed as a dev dependency)
 
 ### Setup
 
@@ -27,32 +29,30 @@ packages/
 # Install dependencies
 npm install
 
-# Generate database migrations (if schema changed)
-npm run db:generate
-
-# Apply migrations to local D1 database
-npm run db:migrate
-
-# Start the local dev server
-npm run dev
+# Start the local server
+npm start -w packages/local
 ```
 
-The dev server runs at `http://localhost:8787` using Wrangler's local mode with a local D1 SQLite database and Durable Object emulation.
+The server runs at `http://localhost:4007` with a SQLite database at `.agentcron/agentcron.db` (auto-created on first run).
 
-### Create an API Key (local)
+Configure with environment variables:
+- `PORT` — server port (default: 4007)
+- `AGENTCRON_DB_PATH` — database file path (default: `.agentcron/agentcron.db`)
+
+### Create an API Key
 
 ```bash
-curl -X POST http://localhost:8787/v1/auth/keys \
+curl -X POST http://localhost:4007/v1/auth/keys \
   -H "Content-Type: application/json" \
-  -d '{"name": "local-dev"}'
+  -d '{"name": "my-agent"}'
 ```
 
 Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved again.
 
-### Create a Schedule (local)
+### Create a Schedule
 
 ```bash
-curl -X POST http://localhost:8787/v1/schedules \
+curl -X POST http://localhost:4007/v1/schedules \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ac_YOUR_KEY_HERE" \
   -d '{
@@ -71,14 +71,6 @@ curl -X POST http://localhost:8787/v1/schedules \
 
 ```bash
 npm run build    # Build all packages
-```
-
-### Deploy
-
-```bash
-npm run deploy              # Deploy to default environment
-npm run deploy:staging      # Deploy to staging
-npm run deploy:production   # Deploy to production
 ```
 
 ## SDK Usage
@@ -140,6 +132,16 @@ cron.connect({
 | `GET`    | `/v1/schedules/:id/executions`        | Required | List executions     |
 | `GET`    | `/v1/schedules/:id/executions/:eid`   | Required | Get execution       |
 | `GET`    | `/v1/ws`                              | WS auth  | WebSocket endpoint  |
+
+## Deployment
+
+The `packages/server` package deploys to Cloudflare Workers with D1 and Durable Objects:
+
+```bash
+npm run deploy -w packages/server                # Default environment
+npm run deploy:staging -w packages/server         # Staging
+npm run deploy:production -w packages/server      # Production
+```
 
 ## License
 
