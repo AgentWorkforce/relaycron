@@ -1,7 +1,13 @@
 {
   "name": "agentcron",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "npm@10.9.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgentWorkforce/relaycron"
+  },
+  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
