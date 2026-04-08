@@ -1,0 +1,88 @@
+{
+  "version": "1.0.0",
+  "lockfileVersion": 1,
+  "packages": {
+    "@agent-relay/choosing-swarm-patterns#claude.md": {
+      "version": "1.0.0",
+      "resolved": "https://registry.prpm.dev/api/v1/packages/%40agent-relay%2Fchoosing-swarm-patterns/1.0.0.tar.gz",
+      "integrity": "sha256-2b28661abb540c56b46ad980b238589c6dcf59faaa3e66c80c72f72c01407f38",
+      "format": "claude.md",
+      "subtype": "skill",
+      "sourceFormat": "claude",
+      "sourceSubtype": "skill",
+      "installedPath": ".openskills/choosing-swarm-patterns/SKILL.md",
+      "fromCollection": {
+        "name_slug": "agent-relay-starter",
+        "version": "1.0.1"
+      },
+      "progressiveDisclosure": {
+        "mode": "progressive",
+        "resourceDir": ".openskills/choosing-swarm-patterns",
+        "manifestPath": "CLAUDE.md",
+        "resourceName": "choosing-swarm-patterns",
+        "resourceType": "skill",
+        "skillsDir": ".openskills/choosing-swarm-patterns",
+        "skillName": "choosing-swarm-patterns",
+        "eager": false
+      }
+    },
+    "@agent-relay/writing-agent-relay-workflows#claude.md": {
+      "version": "1.3.0",
+      "resolved": "https://registry.prpm.dev/api/v1/packages/%40agent-relay%2Fwriting-agent-relay-workflows/1.3.0.tar.gz",
+      "integrity": "sha256-f002a0ad706fc34e7e0ef6260c70c67ce756615ab1dda436a7e09709cd52803f",
+      "format": "claude.md",
+      "subtype": "skill",
+      "sourceFormat": "claude",
+      "sourceSubtype": "skill",
+      "installedPath": ".openskills/writing-agent-relay-workflows/SKILL.md",
+      "fromCollection": {
+        "name_slug": "agent-relay-starter",
+        "version": "1.0.1"
+      },
+      "progressiveDisclosure": {
+        "mode": "progressive",
+        "resourceDir": ".openskills/writing-agent-relay-workflows",
+        "manifestPath": "CLAUDE.md",
+        "resourceName": "writing-agent-relay-workflows",
+        "resourceType": "skill",
+        "skillsDir": ".openskills/writing-agent-relay-workflows",
+        "skillName": "writing-agent-relay-workflows",
+        "eager": false
+      }
+    },
+    "@agent-workforce/trail-snippet#claude.md:AGENTS.md": {
+      "version": "1.1.0",
+      "resolved": "https://registry.prpm.dev/api/v1/packages/%40agent-workforce%2Ftrail-snippet/1.1.0.tar.gz",
+      "integrity": "sha256-8d8824b5236660e18c780b3574ee756737401d9a77e843411cdd509ceb9e0668",
+      "format": "claude.md",
+      "subtype": "snippet",
+      "sourceFormat": "generic",
+      "sourceSubtype": "snippet",
+      "installedPath": "AGENTS.md",
+      "fromCollection": {
+        "name_slug": "agent-relay-starter",
+        "version": "1.0.1"
+      },
+      "snippetMetadata": {
+        "targetPath": "AGENTS.md",
+        "config": {
+          "target": "AGENTS.md",
+          "position": "append"
+        }
+      }
+    }
+  },
+  "generated": "2026-04-08T15:09:09.941Z",
+  "collections": {
+    "agent-relay-starter": {
+      "name_slug": "agent-relay-starter",
+      "version": "1.0.1",
+      "installedAt": "2026-04-08T15:09:09.941Z",
+      "packages": [
+        "@agent-relay/choosing-swarm-patterns",
+        "@agent-relay/writing-agent-relay-workflows",
+        "@agent-workforce/trail-snippet"
+      ]
+    }
+  }
+}

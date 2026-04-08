@@ -48,3 +48,38 @@ npm run db:migrate   # Apply migrations locally
 - `GET /v1/schedules/:id/executions` - List executions
 - `GET /v1/schedules/:id/executions/:eid` - Get execution
 - `GET /v1/ws` - WebSocket endpoint
+<!-- PRPM_MANIFEST_START -->
+
+<skills_system priority="1">
+<usage>
+When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
+
+How to use skills (loaded into main context):
+- Use the <path> from the skill entry below
+- Invoke: Bash("cat <path>")
+- The skill content will load into your current context
+- Example: Bash("cat .openskills/backend-architect/SKILL.md")
+
+Usage notes:
+- Skills share your context window
+- Do not invoke a skill that is already loaded in your context
+</usage>
+
+<available_skills>
+
+<skill activation="lazy">
+<name>choosing-swarm-patterns</name>
+<description>Use when coordinating multiple AI agents and need to pick the right orchestration pattern - covers 10 patterns (fan-out, pipeline, hub-spoke, consensus, mesh, handoff, cascade, dag, debate, hierarchical) with decision framework and reflection protocol</description>
+<path>.openskills/choosing-swarm-patterns/SKILL.md</path>
+</skill>
+
+<skill activation="lazy">
+<name>writing-agent-relay-workflows</name>
+<description>Use when building multi-agent workflows with the relay broker-sdk - covers the WorkflowBuilder API, DAG step dependencies, agent definitions, step output chaining via {{steps.X.output}}, verification gates, dedicated channels, swarm patterns, error handling, and event listeners</description>
+<path>.openskills/writing-agent-relay-workflows/SKILL.md</path>
+</skill>
+
+</available_skills>
+</skills_system>
+
+<!-- PRPM_MANIFEST_END -->

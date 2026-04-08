@@ -2,11 +2,17 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../db/schema.js";
 import {
-  executeWebhook,
+  executeWebhookWithRetry,
   recordExecution,
   advanceSchedule,
 } from "../engine/executor.js";
 import type { Env } from "../types.js";
+
+const WEBHOOK_RETRY_CONFIG = {
+  maxAttempts: 3,
+  initialBackoffMs: 1000,
+  backoffMultiplier: 5,
+} as const;
 
 /**
  * Each schedule gets its own SchedulerDO instance.
@@ -64,11 +70,12 @@ export class SchedulerDO implements DurableObject {
 
     // Execute based on transport type
     if (schedule.transport_type === "webhook") {
-      const result = await executeWebhook(
+      const result = await executeWebhookWithRetry(
         transportConfig.url,
         JSON.parse(schedule.payload),
         transportConfig.headers ?? {},
-        transportConfig.timeout_ms ?? 10000
+        transportConfig.timeout_ms ?? 10000,
+        WEBHOOK_RETRY_CONFIG
       );
 
       await recordExecution(db, scheduleId, "webhook", result);
@@ -79,10 +86,11 @@ export class SchedulerDO implements DurableObject {
         error:
           "WebSocket transport delivery is not yet available end-to-end; use webhook transport.",
         duration_ms: 0,
+        attempt_count: 1,
       });
     }
 
-    // Advance to next run
+    // Advance to the next run even after terminal delivery failure.
     const nextRunAt = await advanceSchedule(
       db,
       scheduleId,
