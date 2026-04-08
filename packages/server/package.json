@@ -1,8 +1,15 @@
 {
-  "name": "@agentcron/server",
+  "name": "@relaycron/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/app.js",
+  "types": "dist/app.d.ts",
+  "exports": {
+    ".": "./dist/app.js",
+    "./scheduler": "./dist/engine/scheduler.js",
+    "./db": "./dist/db/sqlite.js"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/AgentWorkforce/relaycron",
@@ -10,23 +17,22 @@
   },
   "license": "MIT",
   "scripts": {
-    "dev": "wrangler dev",
-    "build": "tsc",
-    "deploy": "wrangler deploy",
-    "deploy:staging": "wrangler deploy --env staging",
-    "deploy:production": "wrangler deploy --env production"
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc"
   },
   "dependencies": {
-    "@agentcron/types": "*",
+    "@relaycron/types": "*",
+    "@hono/node-server": "^1.13.0",
+    "better-sqlite3": "^11.0.0",
+    "cron-parser": "^5.0.0",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.7.0",
-    "cron-parser": "^5.0.0",
     "nanoid": "^5.0.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
-    "drizzle-kit": "^0.30.0",
-    "typescript": "^5.7.0",
-    "wrangler": "^3.105.0"
+    "@types/better-sqlite3": "^7.6.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0"
   }
 }

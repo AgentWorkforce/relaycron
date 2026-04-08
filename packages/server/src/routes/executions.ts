@@ -1,11 +1,10 @@
 import { Hono } from "hono";
 import { eq, and, desc, lt } from "drizzle-orm";
-import { ListExecutionsQuery } from "@agentcron/types";
+import { ListExecutionsQuery } from "@relaycron/types";
 import { schedules, executions } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
-import type { Env } from "../types.js";
 
-const executionsRouter = new Hono<{ Bindings: Env }>();
+const executionsRouter = new Hono();
 
 executionsRouter.use("*", requireAuth);
 

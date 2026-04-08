@@ -8,9 +8,9 @@ Turbo monorepo with npm workspaces:
 
 ```
 packages/
-  types/    - Shared Zod schemas and TypeScript types (@agentcron/types)
-  server/   - Standalone Node.js server with SQLite (@agentcron/server)
-  sdk/      - TypeScript SDK for consumers (@agentcron/sdk)
+  types/    - Shared Zod schemas and TypeScript types (@relaycron/types)
+  server/   - Standalone Node.js server with SQLite (@relaycron/server)
+  sdk/      - TypeScript SDK for consumers (@relaycron/sdk)
 ```
 
 ## Running Locally
@@ -32,11 +32,11 @@ npm install
 npm start -w packages/server
 ```
 
-The server runs at `http://localhost:4007` with a SQLite database at `.agentcron/agentcron.db` (auto-created on first run).
+The server runs at `http://localhost:4007` with a SQLite database at `.relaycron/relaycron.db` (auto-created on first run).
 
 Configure with environment variables:
 - `PORT` — server port (default: 4007)
-- `AGENTCRON_DB_PATH` — database file path (default: `.agentcron/agentcron.db`)
+- `AGENTCRON_DB_PATH` — database file path (default: `.relaycron/relaycron.db`)
 
 ### Create an API Key
 
@@ -75,11 +75,11 @@ npm run build    # Build all packages
 ## SDK Usage
 
 ```bash
-npm install @agentcron/sdk
+npm install @relaycron/sdk
 ```
 
 ```typescript
-import { AgentCron } from "@agentcron/sdk";
+import { AgentCron } from "@relaycron/sdk";
 
 const cron = new AgentCron({ apiKey: "ac_..." });
 

@@ -17,4 +17,4 @@ export type {
   ScheduleStatus,
   ExecutionStatus,
   WsMessage,
-} from "@agentcron/types";
+} from "@relaycron/types";

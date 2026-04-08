@@ -1,12 +1,12 @@
-# AgentCron - Schedule Work for Agents
+# RelayCron - Schedule Work for Agents
 
-AgentCron lets you schedule future work with a payload that gets delivered on a cron schedule or at a specific time. Use it to set reminders, schedule recurring tasks, or defer work.
+RelayCron lets you schedule future work with a payload that gets delivered on a cron schedule or at a specific time. Use it to set reminders, schedule recurring tasks, or defer work.
 
 ## Quick Start
 
 Install the SDK:
 ```bash
-npm install @agentcron/sdk
+npm install @relaycron/sdk
 ```
 
 ### 1. Get an API Key
@@ -23,9 +23,9 @@ Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved
 
 **One-time schedule (webhook delivery):**
 ```typescript
-import { AgentCron } from "@agentcron/sdk";
+import { RelayCron } from "@relaycron/sdk";
 
-const cron = new AgentCron({ apiKey: "ac_..." });
+const cron = new RelayCron({ apiKey: "ac_..." });
 
 await cron.createSchedule({
   name: "deploy-reminder",
@@ -66,7 +66,7 @@ await cron.createSchedule({
 Instead of setting up a webhook endpoint, connect via WebSocket to receive payloads in real-time:
 
 ```typescript
-const cron = new AgentCron({ apiKey: "ac_..." });
+const cron = new RelayCron({ apiKey: "ac_..." });
 
 // Create a schedule with websocket transport
 await cron.createSchedule({
@@ -79,7 +79,7 @@ await cron.createSchedule({
 
 // Connect and listen
 cron.connect({
-  onConnected: () => console.log("Connected to AgentCron"),
+  onConnected: () => console.log("Connected to RelayCron"),
   onScheduleFired: (msg) => {
     console.log(`Schedule ${msg.schedule_name} fired!`);
     console.log("Payload:", msg.payload);
@@ -191,8 +191,8 @@ Standard 5-field cron: `minute hour day-of-month month day-of-week`
 
 **webhook** - HTTP POST to a URL with your payload as the JSON body. Includes headers:
 - `Content-Type: application/json`
-- `User-Agent: AgentCron/1.0`
-- `X-AgentCron-Delivery: <unique-id>`
+- `User-Agent: RelayCron/1.0`
+- `X-RelayCron-Delivery: <unique-id>`
 
 **websocket** - Delivered to your connected WebSocket session. Requires an active connection.
 
@@ -208,7 +208,7 @@ Standard 5-field cron: `minute hour day-of-month month day-of-week`
 ### SDK Methods
 
 ```typescript
-const cron = new AgentCron({ apiKey: "ac_..." });
+const cron = new RelayCron({ apiKey: "ac_..." });
 
 // Schedules
 await cron.createSchedule({...});

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { apiKeys } from "../db/schema.js";
 import { hashKey } from "../middleware/auth.js";
 import type { Env } from "../types.js";
-import type { WsMessage } from "@agentcron/types";
+import type { WsMessage } from "@relaycron/types";
 
 const wsRouter = new Hono<{ Bindings: Env }>();
 

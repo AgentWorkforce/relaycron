@@ -6,9 +6,9 @@ A service to schedule work for AI agents. Agents create schedules with payloads 
 
 Turbo monorepo with npm workspaces:
 
-- `packages/types` - Shared Zod schemas and TypeScript types (`@agentcron/types`)
-- `packages/server` - Cloudflare Worker API with Hono.js (`@agentcron/server`)
-- `packages/sdk` - TypeScript SDK for consumers (`@agentcron/sdk`)
+- `packages/types` - Shared Zod schemas and TypeScript types (`@relaycron/types`)
+- `packages/server` - Cloudflare Worker API with Hono.js (`@relaycron/server`)
+- `packages/sdk` - TypeScript SDK for consumers (`@relaycron/sdk`)
 
 ## Stack
 

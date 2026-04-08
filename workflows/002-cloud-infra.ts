@@ -17,6 +17,7 @@ import { workflow } from "@agent-relay/sdk/workflows";
  * Repos touched: cloud/ only (runs in a worktree)
  */
 
+async function main() {
 const result = await workflow("002-cloud-infra")
   .description("Wire RelayCron into cloud — CF Worker + D1 + DO + SST")
   .pattern("dag")
@@ -278,3 +279,5 @@ IMPORTANT: Write the files to disk. Do NOT output to stdout.`,
   .run({ cwd: process.cwd() });
 
 console.log("Result:", result.status);
+}
+main().catch(console.error);
