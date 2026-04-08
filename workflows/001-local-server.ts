@@ -1,22 +1,25 @@
 import { workflow } from "@agent-relay/sdk/workflows";
 
 /**
- * Workflow: Create packages/local — standalone Node.js server for AgentCron
+ * Workflow: Rewrite packages/server as a standalone Node.js server
  *
- * The existing packages/server runs on Cloudflare Workers (D1, Durable Objects).
- * This creates a local-first OSS version that runs with:
+ * Remove all Cloudflare dependencies (D1, Durable Objects, wrangler)
+ * from packages/server and replace with:
  *   - Hono + @hono/node-server (like relayauth)
  *   - better-sqlite3 for storage (instead of D1)
  *   - Node.js setTimeout-based scheduler (instead of Durable Object alarms)
  *   - Node.js crypto (instead of crypto.subtle)
- *   - Same API surface, same routes, same @agentcron/types
  *
- * Reference: packages/server (Cloudflare version) for the route logic
- * Reference: relayauth packages/server for the local Hono + better-sqlite3 pattern
+ * Cloudflare-specific wiring (D1 bindings, DOs, SST) lives in ../cloud,
+ * not in this OSS repo. Same API surface, same routes, same @agentcron/types.
+ *
+ * Reference: relayauth packages/server for the Hono + better-sqlite3 pattern
  */
 
 const result = await workflow("001-local-server")
-  .description("Create packages/local — OSS Node.js server with better-sqlite3")
+  .description(
+    "Rewrite packages/server — remove Cloudflare, use better-sqlite3"
+  )
   .pattern("dag")
   .channel("wf-local-server")
   .maxConcurrency(4)
@@ -24,7 +27,7 @@ const result = await workflow("001-local-server")
 
   .agent("lead", {
     cli: "claude",
-    role: "Architect — plans the local server, reviews output",
+    role: "Architect — plans the rewrite, reviews output",
     retries: 2,
   })
   .agent("worker-1", {
@@ -42,11 +45,11 @@ const result = await workflow("001-local-server")
   .agent("worker-3", {
     cli: "claude",
     preset: "worker",
-    role: "Implements server entry point and tests",
+    role: "Implements server entry point",
     retries: 2,
   })
 
-  // ── Read all source material ─────────────────────────────────────
+  // ── Read all existing source ─────────────────────────────────────
   .step("read-cf-server", {
     type: "deterministic",
     command: [
@@ -71,6 +74,8 @@ const result = await workflow("001-local-server")
       "cat packages/server/src/routes/schedules.ts",
       "echo '=== routes/executions.ts ==='",
       "cat packages/server/src/routes/executions.ts",
+      "echo '=== routes/ws.ts ==='",
+      "cat packages/server/src/routes/ws.ts",
     ].join(" && "),
     captureOutput: true,
   })
@@ -90,6 +95,18 @@ const result = await workflow("001-local-server")
     captureOutput: true,
   })
 
+  .step("read-cf-package", {
+    type: "deterministic",
+    command: [
+      "cat packages/server/package.json",
+      "echo '---'",
+      "cat wrangler.toml",
+      "echo '---'",
+      "cat tsconfig.base.json",
+    ].join(" && "),
+    captureOutput: true,
+  })
+
   .step("read-relayauth-pattern", {
     type: "deterministic",
     command: [
@@ -101,80 +118,100 @@ const result = await workflow("001-local-server")
     captureOutput: true,
   })
 
-  .step("read-monorepo-config", {
+  // ── Clean up CF-only files ────────────────────────────────────────
+  .step("remove-cf-files", {
     type: "deterministic",
+    dependsOn: [
+      "read-cf-server",
+      "read-cf-routes",
+      "read-cf-engine",
+      "read-cf-package",
+    ],
     command: [
-      "cat package.json",
-      "echo '---'",
-      "cat tsconfig.base.json",
-      "echo '---'",
-      "cat packages/types/package.json",
+      "rm -f wrangler.toml",
+      "rm -f drizzle.config.ts",
+      "rm -rf packages/server/src/durable-objects",
+      "rm -f packages/server/src/db/migrations/0000_init.sql",
+      "rmdir packages/server/src/db/migrations 2>/dev/null || true",
+      "echo 'CF_FILES_REMOVED'",
     ].join(" && "),
-    captureOutput: true,
+    failOnError: true,
   })
 
   // ── Plan ──────────────────────────────────────────────────────────
   .step("plan", {
     agent: "lead",
-    task: `Design packages/local — a standalone Node.js server for AgentCron that has zero Cloudflare dependencies.
+    task: `Plan the rewrite of packages/server to remove ALL Cloudflare dependencies.
 
-EXISTING CLOUDFLARE SERVER (what we're porting from):
+CURRENT CF SERVER (being rewritten):
 {{steps.read-cf-server.output}}
 
 {{steps.read-cf-routes.output}}
 
 {{steps.read-cf-engine.output}}
 
-RELAYAUTH PATTERN (how the local server should look):
+CURRENT PACKAGE + CONFIG:
+{{steps.read-cf-package.output}}
+
+RELAYAUTH PATTERN (target pattern):
 {{steps.read-relayauth-pattern.output}}
 
-MONOREPO CONFIG:
-{{steps.read-monorepo-config.output}}
+We are rewriting packages/server IN PLACE. The CF-only files (wrangler.toml, drizzle.config.ts, durable-objects/) have already been deleted. Every file in packages/server/src/ will be rewritten.
 
-Design packages/local/ with these files:
+The rewrite replaces:
+- D1 → better-sqlite3 (.agentcron/agentcron.db, configurable via AGENTCRON_DB_PATH)
+- drizzle-orm/d1 → drizzle-orm/better-sqlite3
+- Durable Object alarms → LocalScheduler class with setTimeout
+- crypto.subtle → Node.js crypto.createHash
+- c.executionCtx.waitUntil → fire-and-forget promise
+- Cloudflare Worker export default → @hono/node-server serve()
+- @cloudflare/workers-types → @types/better-sqlite3
 
-1. package.json — @agentcron/local, deps: hono, @hono/node-server, better-sqlite3, drizzle-orm, cron-parser, nanoid, @agentcron/types. DevDeps: @types/better-sqlite3, tsx, typescript.
-   Scripts: start (tsx src/server.ts), dev (tsx watch src/server.ts), build (tsc).
-2. tsconfig.json — extends ../../tsconfig.base.json
-3. src/server.ts — Hono app + @hono/node-server serve(). Port from PORT env or 4007. Auto-inits DB on startup.
-4. src/db/sqlite.ts — better-sqlite3 wrapper. Opens .agentcron/agentcron.db (configurable via AGENTCRON_DB_PATH). Auto-creates tables matching the existing schema (api_keys, schedules, executions) with WAL mode. Exports a function that returns a drizzle instance using drizzle-orm/better-sqlite3.
-5. src/db/schema.ts — can reuse the existing schema from packages/server verbatim (it's pure drizzle-orm/sqlite-core, no CF deps).
-6. src/middleware/db.ts — creates drizzle instance from better-sqlite3, sets on context.
-7. src/middleware/auth.ts — same logic but uses Node.js crypto.createHash('sha256') instead of crypto.subtle. Removes c.executionCtx.waitUntil (just await the update).
-8. src/routes/auth.ts — same logic, no changes needed (no CF deps).
-9. src/routes/schedules.ts — same logic but replace all Durable Object calls (SCHEDULER_DO) with a local scheduler import. When creating/updating/deleting a schedule, call scheduler.setAlarm(id, runAt) or scheduler.cancelAlarm(id) instead.
-10. src/routes/executions.ts — same logic verbatim (no CF deps).
-11. src/engine/cron.ts — same (no CF deps, already portable).
-12. src/engine/executor.ts — same logic (uses standard fetch, already portable).
-13. src/engine/scheduler.ts — NEW. Replaces Durable Object alarms with in-process setTimeout. Maintains a Map<scheduleId, NodeJS.Timeout>. Methods: setAlarm(id, runAt, callback), cancelAlarm(id), cancelAll(). On alarm fire: loads schedule from DB, executes webhook, records execution, advances schedule, sets next alarm if recurring. This is the key replacement for the SchedulerDO.
-14. src/types.ts — local version: Env has no CF bindings. Database type uses drizzle-orm/better-sqlite3 instead of drizzle-orm/d1.
+Files to rewrite:
+1. package.json — remove CF deps (wrangler, @cloudflare/workers-types), add Node deps (@hono/node-server, better-sqlite3, @types/better-sqlite3, tsx). Change scripts: start → tsx src/server.ts, dev → tsx watch src/server.ts. Remove deploy scripts.
+2. src/types.ts — Database type from drizzle-orm/better-sqlite3, remove Env with D1/DO bindings.
+3. src/db/schema.ts — keep as-is (already portable drizzle-orm/sqlite-core)
+4. src/db/sqlite.ts — NEW: better-sqlite3 wrapper, auto-creates tables, WAL mode
+5. src/middleware/db.ts — accept db via closure instead of from CF env bindings
+6. src/middleware/auth.ts — Node.js crypto.createHash, remove executionCtx.waitUntil
+7. src/routes/auth.ts — keep as-is (no CF deps)
+8. src/routes/schedules.ts — replace DO calls with LocalScheduler.setAlarm/cancelAlarm
+9. src/routes/executions.ts — keep as-is (no CF deps)
+10. src/routes/ws.ts — keep (WebSocket route, if portable)
+11. src/engine/cron.ts — keep as-is (already portable)
+12. src/engine/executor.ts — keep as-is (uses standard fetch)
+13. src/engine/scheduler.ts — NEW: replaces SchedulerDO with setTimeout-based scheduling
+14. src/server.ts — NEW: replaces worker.ts. Hono app + @hono/node-server. Inits DB, creates scheduler, restores alarms, serves on PORT/4007.
+15. DELETE src/worker.ts — replaced by src/server.ts
 
-Output the exact file list, key interfaces, and what changes from the CF version in each file. End with PLAN_COMPLETE.`,
+Output the exact changes per file. End with PLAN_COMPLETE.`,
     dependsOn: [
       "read-cf-server",
       "read-cf-routes",
       "read-cf-engine",
+      "read-cf-package",
       "read-relayauth-pattern",
-      "read-monorepo-config",
+      "remove-cf-files",
     ],
     verification: { type: "output_contains", value: "PLAN_COMPLETE" },
   })
 
-  // ── Scaffold ──────────────────────────────────────────────────────
-  .step("scaffold", {
+  // ── Package.json + types (worker-3) ───────────────────────────────
+  .step("rewrite-package", {
     agent: "worker-3",
-    task: `Create the package scaffold for packages/local/.
+    task: `Rewrite packages/server/package.json and src/types.ts to remove all Cloudflare dependencies.
 
 Plan:
 {{steps.plan.output}}
 
-Create these files:
+Current package.json:
+{{steps.read-cf-package.output}}
 
-1. packages/local/package.json:
+FILE 1: packages/server/package.json — rewrite entirely:
 {
-  "name": "@agentcron/local",
+  "name": "@agentcron/server",
   "version": "0.1.0",
-  "description": "Standalone local Node.js server for AgentCron",
+  "description": "AgentCron server — standalone Node.js scheduling service",
   "type": "module",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -189,7 +226,7 @@ Create these files:
   "repository": {
     "type": "git",
     "url": "https://github.com/AgentWorkforce/relaycron",
-    "directory": "packages/local"
+    "directory": "packages/server"
   },
   "license": "MIT",
   "engines": { "node": ">=18" },
@@ -209,84 +246,83 @@ Create these files:
   }
 }
 
-2. packages/local/tsconfig.json — extends ../../tsconfig.base.json, outDir: dist, rootDir: src, declaration: true, include: ["src"].
+FILE 2: packages/server/src/types.ts — rewrite:
+- Import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
+- Import * as schema from "./db/schema.js"
+- Export type Database = BetterSQLite3Database<typeof schema>
+- Export interface AuthContext { apiKeyId: string }
+- Extend Hono ContextVariableMap with db: Database and auth: AuthContext
+- NO Env interface, NO D1Database, NO DurableObjectNamespace
 
-3. packages/local/src/types.ts:
-Import BetterSqlite3Database from drizzle-orm/better-sqlite3.
-Export interface LocalEnv { ENVIRONMENT: string; }
-Export type Database = BetterSqlite3Database<typeof schema>;
-Export interface AuthContext { apiKeyId: string; }
-Extend Hono ContextVariableMap with db: Database and auth: AuthContext.
-
-Only create these 3 files. Write to disk.
+Only edit these 2 files. Write to disk.
 IMPORTANT: Write the files to disk. Do NOT output to stdout.`,
     dependsOn: ["plan"],
-    verification: { type: "file_exists", value: "packages/local/package.json" },
+    verification: { type: "exit_code" },
   })
 
-  .step("verify-scaffold", {
+  .step("verify-package", {
     type: "deterministic",
-    dependsOn: ["scaffold"],
+    dependsOn: ["rewrite-package"],
     command:
-      "test -f packages/local/package.json && test -f packages/local/tsconfig.json && test -f packages/local/src/types.ts && echo 'SCAFFOLD_OK'",
+      "grep -q 'better-sqlite3' packages/server/package.json && ! grep -q 'wrangler' packages/server/package.json && ! grep -q 'D1Database' packages/server/src/types.ts && echo 'PACKAGE_OK'",
     failOnError: true,
   })
 
-  // ── DB + Schema (worker-1) ────────────────────────────────────────
+  // ── DB layer (worker-1) ──────────────────────────────────────────
   .step("impl-db", {
     agent: "worker-1",
-    task: `Create the database layer for packages/local/.
+    task: `Create the better-sqlite3 database layer for packages/server/.
 
 Plan:
 {{steps.plan.output}}
 
-Existing CF schema (reuse this verbatim):
+Existing schema (keep as-is — already portable):
 {{steps.read-cf-engine.output}}
 
-Create 2 files:
-
-FILE 1: packages/local/src/db/schema.ts
-Copy the schema from packages/server/src/db/schema.ts exactly. It uses drizzle-orm/sqlite-core which has no Cloudflare dependencies — it works with both D1 and better-sqlite3.
-
-FILE 2: packages/local/src/db/sqlite.ts
+FILE 1: packages/server/src/db/sqlite.ts — NEW file:
 - Import Database from better-sqlite3 (default import)
 - Import { drizzle } from "drizzle-orm/better-sqlite3"
 - Import * as schema from "./schema.js"
+- Import { mkdirSync } from "node:fs"
+- Import { dirname } from "node:path"
 - Export function createDatabase(dbPath?: string) that:
   - Defaults dbPath to process.env.AGENTCRON_DB_PATH or ".agentcron/agentcron.db"
-  - Creates parent directory with fs.mkdirSync(dirname(dbPath), { recursive: true })
+  - mkdirSync(dirname(dbPath), { recursive: true })
   - Opens better-sqlite3 with the path
-  - Enables WAL mode: sqlite.pragma("journal_mode = WAL")
-  - Enables foreign keys: sqlite.pragma("foreign_keys = ON")
-  - Runs CREATE TABLE IF NOT EXISTS for all 3 tables (api_keys, schedules, executions) matching the schema exactly, including indices
+  - sqlite.pragma("journal_mode = WAL")
+  - sqlite.pragma("foreign_keys = ON")
+  - Runs CREATE TABLE IF NOT EXISTS for api_keys, schedules, executions with all columns and indices matching the schema exactly
   - Returns drizzle(sqlite, { schema })
-- Export the type: export type SqliteDatabase = ReturnType<typeof createDatabase>
 
-Only create these 2 files. Write to disk.
-IMPORTANT: Write the files to disk. Do NOT output to stdout.`,
+Do NOT modify packages/server/src/db/schema.ts — it's already portable.
+Only create packages/server/src/db/sqlite.ts.
+IMPORTANT: Write the file to disk. Do NOT output to stdout.`,
     dependsOn: ["plan"],
-    verification: { type: "file_exists", value: "packages/local/src/db/sqlite.ts" },
+    verification: {
+      type: "file_exists",
+      value: "packages/server/src/db/sqlite.ts",
+    },
   })
 
   .step("verify-db", {
     type: "deterministic",
     dependsOn: ["impl-db"],
     command:
-      "test -f packages/local/src/db/schema.ts && test -f packages/local/src/db/sqlite.ts && echo 'DB_OK'",
+      "test -f packages/server/src/db/sqlite.ts && test -f packages/server/src/db/schema.ts && echo 'DB_OK'",
     failOnError: true,
   })
 
   // ── Scheduler engine (worker-1, after DB) ─────────────────────────
   .step("read-types-file", {
     type: "deterministic",
-    dependsOn: ["verify-scaffold"],
-    command: "cat packages/local/src/types.ts",
+    dependsOn: ["verify-package"],
+    command: "cat packages/server/src/types.ts",
     captureOutput: true,
   })
 
   .step("impl-scheduler", {
     agent: "worker-1",
-    task: `Create the local scheduler engine that replaces Durable Object alarms.
+    task: `Create the local scheduler engine and update executor for packages/server/.
 
 Plan:
 {{steps.plan.output}}
@@ -294,243 +330,258 @@ Plan:
 CF Durable Object + executor (what we're replacing):
 {{steps.read-cf-engine.output}}
 
-Types:
+New types:
 {{steps.read-types-file.output}}
 
-Create 3 files:
-
-FILE 1: packages/local/src/engine/cron.ts
-Copy from packages/server/src/engine/cron.ts exactly — it uses cron-parser, no CF deps.
-
-FILE 2: packages/local/src/engine/executor.ts
-Copy from packages/server/src/engine/executor.ts but change the Database type import:
-- Change: import type { Database } from "../types.js"
-  (it already uses standard fetch, drizzle-orm, nanoid — all portable)
-
-FILE 3: packages/local/src/engine/scheduler.ts — NEW, replaces SchedulerDO:
+FILE 1: packages/server/src/engine/scheduler.ts — NEW, replaces SchedulerDO:
 - Import { eq } from "drizzle-orm"
 - Import * as schema from "../db/schema.js"
 - Import { executeWebhookWithRetry, recordExecution, advanceSchedule } from "./executor.js"
-- Import type { Database } from drizzle — accept it as constructor param
+- Import type { Database } from "../types.js"
 - Class LocalScheduler:
   - private timers: Map<string, NodeJS.Timeout>
-  - private db: Database (passed in constructor)
+  - private db: Database (constructor param)
   - WEBHOOK_RETRY_CONFIG = { maxAttempts: 3, initialBackoffMs: 1000, backoffMultiplier: 5 }
   - setAlarm(scheduleId: string, runAt: string): void
-    - Cancel any existing timer for this id
-    - Calculate delay = new Date(runAt).getTime() - Date.now()
-    - If delay <= 0, fire immediately via setTimeout(cb, 0)
-    - Otherwise setTimeout(cb, delay)
-    - Store timer in map
-    - The callback calls this.executeSchedule(scheduleId)
-  - cancelAlarm(scheduleId: string): void — clear timeout, delete from map
+    - Cancel existing timer for this id
+    - delay = new Date(runAt).getTime() - Date.now()
+    - setTimeout(cb, Math.max(0, delay)) — fire immediately if overdue
+    - Store in map
+    - Callback calls this.executeSchedule(scheduleId)
+  - cancelAlarm(scheduleId: string): void — clearTimeout, delete from map
   - cancelAll(): void — clear all timers
-  - private async executeSchedule(scheduleId: string): void
-    - Same logic as SchedulerDO.alarm(): fetch schedule, check active, execute webhook, record, advance, set next alarm if recurring
-  - restoreAlarms(): Promise<void>
-    - Query all active schedules with non-null next_run_at
-    - Call setAlarm for each one
-    - This is called on server startup to resume pending schedules
+  - private async executeSchedule(scheduleId: string): Promise<void>
+    - Same logic as SchedulerDO.alarm():
+    - Fetch schedule from DB, check status === "active"
+    - If webhook: executeWebhookWithRetry, recordExecution
+    - If websocket: recordExecution with failure (not yet supported)
+    - advanceSchedule to get nextRunAt
+    - If nextRunAt: this.setAlarm(scheduleId, nextRunAt)
+  - async restoreAlarms(): Promise<void>
+    - Select all schedules where status = "active" AND next_run_at IS NOT NULL
+    - setAlarm for each
+    - Log count restored
 - Export LocalScheduler
 
-Only create these 3 files. Write to disk.
+FILE 2: packages/server/src/engine/executor.ts — update import only:
+- Change "import type { Database } from '../types.js'" (should already be this)
+- Everything else stays (standard fetch, drizzle-orm, nanoid — all portable)
+
+FILE 3: packages/server/src/engine/cron.ts — leave as-is (already portable, no CF deps)
+
+Only create/edit these files. Write to disk.
 IMPORTANT: Write the files to disk. Do NOT output to stdout.`,
     dependsOn: ["verify-db", "read-types-file"],
-    verification: { type: "file_exists", value: "packages/local/src/engine/scheduler.ts" },
+    verification: {
+      type: "file_exists",
+      value: "packages/server/src/engine/scheduler.ts",
+    },
   })
 
   .step("verify-scheduler", {
     type: "deterministic",
     dependsOn: ["impl-scheduler"],
     command:
-      "test -f packages/local/src/engine/cron.ts && test -f packages/local/src/engine/executor.ts && test -f packages/local/src/engine/scheduler.ts && echo 'SCHEDULER_OK'",
+      "test -f packages/server/src/engine/scheduler.ts && echo 'SCHEDULER_OK'",
     failOnError: true,
   })
 
-  // ── Middleware + Routes (worker-2, after scaffold + db) ───────────
+  // ── Middleware (worker-2) ─────────────────────────────────────────
   .step("read-db-file", {
     type: "deterministic",
     dependsOn: ["verify-db"],
-    command: "cat packages/local/src/db/sqlite.ts",
+    command: "cat packages/server/src/db/sqlite.ts",
     captureOutput: true,
   })
 
-  .step("impl-middleware", {
+  .step("rewrite-middleware", {
     agent: "worker-2",
-    task: `Create the middleware for packages/local/.
+    task: `Rewrite the middleware for packages/server/ to remove Cloudflare dependencies.
 
 Plan:
 {{steps.plan.output}}
 
-CF middleware (what we're porting):
+Current CF middleware:
 {{steps.read-cf-server.output}}
 
-Local DB module:
+New DB module:
 {{steps.read-db-file.output}}
 
-Types:
+New types:
 {{steps.read-types-file.output}}
 
-Create 2 files:
-
-FILE 1: packages/local/src/middleware/db.ts
+FILE 1: packages/server/src/middleware/db.ts — rewrite:
 - Import { createMiddleware } from "hono/factory"
-- Accept the drizzle database instance via closure (not from env bindings)
-- Export function createDbMiddleware(db: Database) that returns a Hono middleware which sets c.set("db", db)
+- Import type { Database } from "../types.js"
+- Export function createDbMiddleware(db: Database) that returns middleware setting c.set("db", db)
+- No more D1 binding, no more drizzle-orm/d1
 
-FILE 2: packages/local/src/middleware/auth.ts
-- Same logic as the CF version BUT:
-  - Replace crypto.subtle.digest with Node.js: import { createHash } from "node:crypto". hashKey becomes: createHash("sha256").update(key).digest("hex") — synchronous, not async.
-  - Remove c.executionCtx.waitUntil() — just do a fire-and-forget db update (don't await, just call .then(() => {}) to suppress unhandled rejection)
-  - The middleware should accept the db from context (c.get("db")) like before
+FILE 2: packages/server/src/middleware/auth.ts — rewrite:
+- Import { createHash } from "node:crypto"
+- hashKey becomes synchronous: createHash("sha256").update(key).digest("hex")
+- Remove c.executionCtx.waitUntil — fire-and-forget the last_used_at update with .catch(() => {})
+- Remove the Bindings: Env type param from createMiddleware (use empty object or omit)
+- Keep all auth logic (Bearer token, ac_ prefix check, hash lookup) identical
 
-Only create these 2 files. Write to disk.
+Only edit these 2 files. Write to disk.
 IMPORTANT: Write the files to disk. Do NOT output to stdout.`,
-    dependsOn: ["verify-scaffold", "read-db-file"],
-    verification: { type: "file_exists", value: "packages/local/src/middleware/auth.ts" },
+    dependsOn: ["verify-package", "read-db-file"],
+    verification: { type: "exit_code" },
   })
 
   .step("verify-middleware", {
     type: "deterministic",
-    dependsOn: ["impl-middleware"],
+    dependsOn: ["rewrite-middleware"],
     command:
-      "test -f packages/local/src/middleware/db.ts && test -f packages/local/src/middleware/auth.ts && echo 'MIDDLEWARE_OK'",
+      "! grep -q 'drizzle-orm/d1' packages/server/src/middleware/db.ts && ! grep -q 'crypto.subtle' packages/server/src/middleware/auth.ts && echo 'MIDDLEWARE_OK'",
     failOnError: true,
   })
 
-  .step("impl-routes", {
+  // ── Routes (worker-2, after middleware + scheduler) ───────────────
+  .step("rewrite-routes", {
     agent: "worker-2",
-    task: `Create the route handlers for packages/local/.
+    task: `Rewrite the schedule route to remove Cloudflare Durable Object references.
 
 Plan:
 {{steps.plan.output}}
 
-CF routes (what we're porting):
+Current CF routes:
 {{steps.read-cf-routes.output}}
 
-Create 3 files:
-
-FILE 1: packages/local/src/routes/auth.ts
-Copy from CF version. Only change: import paths to local types. The auth route has no CF dependencies.
-
-FILE 2: packages/local/src/routes/schedules.ts
-Port from CF version with these changes:
-- Remove all SCHEDULER_DO / Durable Object references
-- Instead, import LocalScheduler from the engine
-- Accept the scheduler instance via closure: export function createSchedulesRouter(scheduler: LocalScheduler)
-- Replace DO calls with:
+FILE 1: packages/server/src/routes/schedules.ts — rewrite:
+- Remove all SCHEDULER_DO / DurableObject references
+- Import { LocalScheduler } from "../engine/scheduler.js"
+- Export function createSchedulesRouter(scheduler: LocalScheduler) that returns a Hono router
+- Replace DO alarm calls with:
   - scheduler.setAlarm(id, nextRunAt) instead of stub.fetch("/set-alarm", ...)
   - scheduler.cancelAlarm(id) instead of stub.fetch("/cancel-alarm", ...)
-- Keep all validation, CRUD, pagination logic identical
-- Use the local hashKey (from ../middleware/auth.js) if needed
+- Remove Bindings: Env type parameter from Hono<>
+- Keep ALL validation, CRUD, pagination, formatSchedule logic identical
 
-FILE 3: packages/local/src/routes/executions.ts
-Copy from CF version. Only change: import paths to local types. Executions route has no CF dependencies.
+FILE 2: packages/server/src/routes/auth.ts — minor update:
+- Remove Bindings: Env type parameter from Hono<>
+- Import hashKey from "../middleware/auth.js"
+- Everything else stays
 
-Only create these 3 files. Write to disk.
+FILE 3: packages/server/src/routes/executions.ts — minor update:
+- Remove Bindings: Env type parameter from Hono<>
+- Everything else stays
+
+Only edit these 3 files. Write to disk.
 IMPORTANT: Write the files to disk. Do NOT output to stdout.`,
     dependsOn: ["verify-middleware", "verify-scheduler"],
-    verification: { type: "file_exists", value: "packages/local/src/routes/schedules.ts" },
+    verification: { type: "exit_code" },
   })
 
   .step("verify-routes", {
     type: "deterministic",
-    dependsOn: ["impl-routes"],
+    dependsOn: ["rewrite-routes"],
     command:
-      "test -f packages/local/src/routes/auth.ts && test -f packages/local/src/routes/schedules.ts && test -f packages/local/src/routes/executions.ts && echo 'ROUTES_OK'",
+      "! grep -q 'SCHEDULER_DO' packages/server/src/routes/schedules.ts && ! grep -q 'DurableObject' packages/server/src/routes/schedules.ts && echo 'ROUTES_OK'",
     failOnError: true,
   })
 
-  // ── Server entry point (worker-3, after everything) ───────────────
-  .step("read-all-local-src", {
+  // ── Server entry point (worker-3, replaces worker.ts) ─────────────
+  .step("read-all-rewritten", {
     type: "deterministic",
     dependsOn: ["verify-routes"],
     command: [
       "echo '=== types.ts ==='",
-      "cat packages/local/src/types.ts",
+      "cat packages/server/src/types.ts",
       "echo '=== db/sqlite.ts ==='",
-      "cat packages/local/src/db/sqlite.ts",
+      "cat packages/server/src/db/sqlite.ts",
       "echo '=== middleware/db.ts ==='",
-      "cat packages/local/src/middleware/db.ts",
+      "cat packages/server/src/middleware/db.ts",
       "echo '=== middleware/auth.ts ==='",
-      "cat packages/local/src/middleware/auth.ts",
+      "cat packages/server/src/middleware/auth.ts",
       "echo '=== engine/scheduler.ts ==='",
-      "cat packages/local/src/engine/scheduler.ts",
-      "echo '=== routes/auth.ts ==='",
-      "cat packages/local/src/routes/auth.ts",
+      "cat packages/server/src/engine/scheduler.ts",
       "echo '=== routes/schedules.ts ==='",
-      "cat packages/local/src/routes/schedules.ts",
-      "echo '=== routes/executions.ts ==='",
-      "cat packages/local/src/routes/executions.ts",
+      "cat packages/server/src/routes/schedules.ts",
     ].join(" && "),
     captureOutput: true,
   })
 
   .step("impl-server", {
     agent: "worker-3",
-    task: `Create the main server entry point at packages/local/src/server.ts.
+    task: `Create the new server entry point and delete the old worker.ts.
 
-Here are all the modules that have been created:
-{{steps.read-all-local-src.output}}
+Rewritten modules:
+{{steps.read-all-rewritten.output}}
 
-Reference CF worker.ts:
-{{steps.read-cf-server.output}}
-
-Create packages/local/src/server.ts following the relayauth pattern:
+FILE 1: packages/server/src/server.ts — NEW, replaces worker.ts:
 - Import { serve } from "@hono/node-server"
 - Import { Hono } from "hono"
 - Import { cors } from "hono/cors"
 - Import { createDatabase } from "./db/sqlite.js"
 - Import { createDbMiddleware } from "./middleware/db.js"
+- Import { requireAuth } from "./middleware/auth.js"
 - Import { LocalScheduler } from "./engine/scheduler.js"
-- Import route modules
-- On startup:
-  1. Create the database: const db = createDatabase()
-  2. Create the scheduler: const scheduler = new LocalScheduler(db)
-  3. Restore pending alarms: await scheduler.restoreAlarms()
-  4. Build Hono app with cors, db middleware, all routes
-  5. Health endpoint at GET /health
-  6. Same 404 and error handlers as CF version
-  7. serve({ fetch: app.fetch, port: Number(process.env.PORT) || 4007 })
-  8. Log: "AgentCron local server running on http://localhost:{port}"
-- Graceful shutdown: process.on("SIGINT" / "SIGTERM") => scheduler.cancelAll(), process.exit()
-- Auto-start: check import.meta.url === new URL(process.argv[1] ?? "", "file:").href
+- Import route modules (authRouter, createSchedulesRouter, executionsRouter)
+- const db = createDatabase()
+- const scheduler = new LocalScheduler(db)
+- await scheduler.restoreAlarms()
+- Build Hono app:
+  - app.use("*", cors())
+  - app.use("*", createDbMiddleware(db))
+  - GET /health → { ok: true, data: { status: "healthy", version: "0.1.0" } }
+  - app.route("/v1/auth", authRouter)
+  - app.route("/v1/schedules", createSchedulesRouter(scheduler))
+  - app.route("/v1", executionsRouter)
+  - 404 and error handlers same as before
+- const port = Number(process.env.PORT) || 4007
+- serve({ fetch: app.fetch, port })
+- console.log("AgentCron server running on http://localhost:" + port)
+- Graceful shutdown: process.on("SIGINT") and process.on("SIGTERM") → scheduler.cancelAll(), process.exit(0)
 
-Only create packages/local/src/server.ts. Only this one file.
-IMPORTANT: Write the file to disk. Do NOT output to stdout.`,
-    dependsOn: ["read-all-local-src"],
-    verification: { type: "file_exists", value: "packages/local/src/server.ts" },
+FILE 2: Delete packages/server/src/worker.ts
+Run: rm packages/server/src/worker.ts
+
+Only create src/server.ts and delete src/worker.ts.
+IMPORTANT: Write server.ts to disk. Do NOT output to stdout.`,
+    dependsOn: ["read-all-rewritten"],
+    verification: {
+      type: "file_exists",
+      value: "packages/server/src/server.ts",
+    },
+  })
+
+  .step("cleanup-worker", {
+    type: "deterministic",
+    dependsOn: ["impl-server"],
+    command:
+      "rm -f packages/server/src/worker.ts && test ! -f packages/server/src/worker.ts && echo 'WORKER_DELETED'",
+    failOnError: true,
   })
 
   // ── Final verification ────────────────────────────────────────────
-  .step("verify-all-files", {
+  .step("verify-no-cf", {
     type: "deterministic",
-    dependsOn: ["impl-server"],
+    dependsOn: ["cleanup-worker"],
     command: [
-      "echo 'Checking all files...'",
-      "test -f packages/local/package.json",
-      "test -f packages/local/tsconfig.json",
-      "test -f packages/local/src/server.ts",
-      "test -f packages/local/src/types.ts",
-      "test -f packages/local/src/db/schema.ts",
-      "test -f packages/local/src/db/sqlite.ts",
-      "test -f packages/local/src/middleware/db.ts",
-      "test -f packages/local/src/middleware/auth.ts",
-      "test -f packages/local/src/routes/auth.ts",
-      "test -f packages/local/src/routes/schedules.ts",
-      "test -f packages/local/src/routes/executions.ts",
-      "test -f packages/local/src/engine/cron.ts",
-      "test -f packages/local/src/engine/executor.ts",
-      "test -f packages/local/src/engine/scheduler.ts",
-      "echo 'ALL_FILES_OK'",
+      "echo 'Checking no Cloudflare references remain...'",
+      "! grep -r 'D1Database' packages/server/src/ 2>/dev/null",
+      "! grep -r 'DurableObject' packages/server/src/ 2>/dev/null",
+      "! grep -r 'drizzle-orm/d1' packages/server/src/ 2>/dev/null",
+      "! grep -r 'crypto.subtle' packages/server/src/ 2>/dev/null",
+      "! grep -r 'executionCtx' packages/server/src/ 2>/dev/null",
+      "test ! -f wrangler.toml",
+      "test ! -f drizzle.config.ts",
+      "test ! -d packages/server/src/durable-objects",
+      "test ! -f packages/server/src/worker.ts",
+      "test -f packages/server/src/server.ts",
+      "test -f packages/server/src/db/sqlite.ts",
+      "test -f packages/server/src/engine/scheduler.ts",
+      "echo 'NO_CF_DEPS_OK'",
     ].join(" && "),
     failOnError: true,
   })
 
   .step("install-and-build", {
     type: "deterministic",
-    dependsOn: ["verify-all-files"],
-    command: "cd packages/local && npm install 2>&1 | tail -5 && npx tsc --noEmit 2>&1 || echo 'BUILD_WARNINGS — review above'",
+    dependsOn: ["verify-no-cf"],
+    command:
+      "npm install && npx tsc --noEmit -p packages/server/tsconfig.json 2>&1 || echo 'BUILD_WARNINGS — review above'",
     captureOutput: true,
   })
 

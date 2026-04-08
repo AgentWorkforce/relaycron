@@ -9,8 +9,7 @@ Turbo monorepo with npm workspaces:
 ```
 packages/
   types/    - Shared Zod schemas and TypeScript types (@agentcron/types)
-  local/    - Standalone Node.js server with SQLite (@agentcron/local)
-  server/   - Cloudflare Worker for hosted deployment (@agentcron/server)
+  server/   - Standalone Node.js server with SQLite (@agentcron/server)
   sdk/      - TypeScript SDK for consumers (@agentcron/sdk)
 ```
 
@@ -29,8 +28,8 @@ The local server runs as a standalone Node.js process with better-sqlite3 — no
 # Install dependencies
 npm install
 
-# Start the local server
-npm start -w packages/local
+# Start the server
+npm start -w packages/server
 ```
 
 The server runs at `http://localhost:4007` with a SQLite database at `.agentcron/agentcron.db` (auto-created on first run).
@@ -132,16 +131,6 @@ cron.connect({
 | `GET`    | `/v1/schedules/:id/executions`        | Required | List executions     |
 | `GET`    | `/v1/schedules/:id/executions/:eid`   | Required | Get execution       |
 | `GET`    | `/v1/ws`                              | WS auth  | WebSocket endpoint  |
-
-## Deployment
-
-The `packages/server` package deploys to Cloudflare Workers with D1 and Durable Objects:
-
-```bash
-npm run deploy -w packages/server                # Default environment
-npm run deploy:staging -w packages/server         # Staging
-npm run deploy:production -w packages/server      # Production
-```
 
 ## License
 
