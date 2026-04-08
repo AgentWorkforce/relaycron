@@ -1,0 +1,25 @@
+{
+  "name": "@agentcron/server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "tsc",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production"
+  },
+  "dependencies": {
+    "@agentcron/types": "*",
+    "drizzle-orm": "^0.38.0",
+    "hono": "^4.7.0",
+    "cron-parser": "^5.0.0",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^3.105.0"
+  }
+}
