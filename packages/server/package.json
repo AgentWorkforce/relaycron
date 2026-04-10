@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/app.js",
-  "types": "dist/app.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/app.js",
-    "./scheduler": "./dist/engine/scheduler.js",
-    "./db": "./dist/db/sqlite.js"
+    ".": "./dist/index.js",
+    "./scheduler": "./dist/scheduler.js",
+    "./db": "./dist/db/index.js"
   },
   "repository": {
     "type": "git",
