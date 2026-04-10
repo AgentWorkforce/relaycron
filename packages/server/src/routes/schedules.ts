@@ -327,8 +327,10 @@ export function createSchedulesRouter(scheduler: Scheduler) {
 
     // Update alarm if next_run_at changed or status toggled.
     if (updates.next_run_at !== undefined || data.status !== undefined) {
-      if (updates.next_run_at) {
-        scheduler.setAlarm(c.req.param("id"), updates.next_run_at as string);
+      const effectiveNextRunAt =
+        updates.next_run_at !== undefined ? updates.next_run_at : existing.next_run_at;
+      if (effectiveNextRunAt) {
+        scheduler.setAlarm(c.req.param("id"), effectiveNextRunAt as string);
       } else {
         scheduler.cancelAlarm(c.req.param("id"));
       }

@@ -23,9 +23,9 @@ Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved
 
 **One-time schedule (webhook delivery):**
 ```typescript
-import { RelayCron } from "@relaycron/sdk";
+import { AgentCron } from "@relaycron/sdk";
 
-const cron = new RelayCron({ apiKey: "ac_..." });
+const cron = new AgentCron({ apiKey: "ac_..." });
 
 await cron.createSchedule({
   name: "deploy-reminder",
@@ -66,7 +66,7 @@ await cron.createSchedule({
 Instead of setting up a webhook endpoint, connect via WebSocket to receive payloads in real-time:
 
 ```typescript
-const cron = new RelayCron({ apiKey: "ac_..." });
+const cron = new AgentCron({ apiKey: "ac_..." });
 
 // Create a schedule with websocket transport
 await cron.createSchedule({
@@ -208,7 +208,7 @@ Standard 5-field cron: `minute hour day-of-month month day-of-week`
 ### SDK Methods
 
 ```typescript
-const cron = new RelayCron({ apiKey: "ac_..." });
+const cron = new AgentCron({ apiKey: "ac_..." });
 
 // Schedules
 await cron.createSchedule({...});
