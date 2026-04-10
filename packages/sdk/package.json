@@ -1,6 +1,6 @@
 {
   "name": "@relaycron/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for AgentCron — schedule work for AI agents",
   "type": "module",
   "main": "dist/index.js",
@@ -15,9 +15,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b",
     "dev": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "publishConfig": {
     "access": "public"
@@ -32,7 +32,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@relaycron/types": "*"
+    "@relaycron/types": "^0.1.1"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

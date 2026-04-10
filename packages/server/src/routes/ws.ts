@@ -2,10 +2,9 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { apiKeys } from "../db/schema.js";
 import { hashKey } from "../middleware/auth.js";
-import type { Env } from "../types.js";
 import type { WsMessage } from "@relaycron/types";
 
-const wsRouter = new Hono<{ Bindings: Env }>();
+const wsRouter = new Hono();
 
 wsRouter.get("/", async (c) => {
   const upgradeHeader = c.req.header("Upgrade");

@@ -1,6 +1,6 @@
 {
   "name": "@relaycron/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
@@ -10,6 +10,9 @@
     "./scheduler": "./dist/scheduler.js",
     "./db": "./dist/db/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/AgentWorkforce/relaycron",
@@ -19,10 +22,14 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc"
+    "build": "tsc -b",
+    "prepack": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
-    "@relaycron/types": "*",
+    "@relaycron/types": "^0.1.1",
     "@hono/node-server": "^1.13.0",
     "better-sqlite3": "^11.0.0",
     "cron-parser": "^5.0.0",

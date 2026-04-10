@@ -14,7 +14,7 @@ export function createApp(db: Database, scheduler: Scheduler): Hono {
 
   // Health check
   app.get("/health", (c) =>
-    c.json({ ok: true, data: { status: "healthy", version: "0.1.0" } })
+    c.json({ ok: true, data: { status: "healthy", version: "0.1.1" } })
   );
 
   // Routes
