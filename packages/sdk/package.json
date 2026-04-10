@@ -32,7 +32,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@relaycron/types": "^0.1.1"
+    "@relaycron/types": "0.1.1"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
