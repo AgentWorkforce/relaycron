@@ -65,6 +65,7 @@ export function createDatabase(dbPath?: string) {
 
     CREATE INDEX IF NOT EXISTS idx_executions_schedule_id ON executions(schedule_id);
     CREATE INDEX IF NOT EXISTS idx_executions_started_at ON executions(started_at);
+    CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
   `);
 
   return drizzle(sqlite, { schema });
