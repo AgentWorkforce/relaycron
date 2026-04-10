@@ -7,7 +7,7 @@ import type {
   UpdateScheduleRequest,
   WsMessage,
   WsScheduleFiredMessage,
-} from "@agentcron/types";
+} from "@relaycron/types";
 
 export interface AgentCronOptions {
   apiKey: string;

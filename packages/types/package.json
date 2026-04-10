@@ -1,6 +1,6 @@
 {
-  "name": "@agentcron/types",
-  "version": "0.1.0",
+  "name": "@relaycron/types",
+  "version": "0.1.1",
   "description": "Shared Zod schemas and TypeScript types for AgentCron",
   "type": "module",
   "main": "dist/index.js",
@@ -15,9 +15,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b",
     "dev": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "publishConfig": {
     "access": "public"

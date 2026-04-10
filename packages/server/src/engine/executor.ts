@@ -4,12 +4,19 @@ import { schedules, executions } from "../db/schema.js";
 import { getNextCronDate } from "./cron.js";
 import type { Database } from "../types.js";
 
-interface ExecutionResult {
+export interface ExecutionResult {
   status: "success" | "failure" | "timeout";
   http_status?: number;
   response_body?: string;
   error?: string;
   duration_ms: number;
+  attempt_count: number;
+}
+
+export interface RetryConfig {
+  maxAttempts: number;
+  initialBackoffMs: number;
+  backoffMultiplier: number;
 }
 
 export async function executeWebhook(
@@ -43,6 +50,7 @@ export async function executeWebhook(
       http_status: response.status,
       response_body: body.slice(0, 4096),
       duration_ms,
+      attempt_count: 1,
     };
   } catch (err) {
     const duration_ms = Date.now() - start;
@@ -52,10 +60,60 @@ export async function executeWebhook(
       status: isTimeout ? "timeout" : "failure",
       error: err instanceof Error ? err.message : "Unknown error",
       duration_ms,
+      attempt_count: 1,
     };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function shouldRetry(result: ExecutionResult): boolean {
+  if (result.status === "success") {
+    return false;
+  }
+
+  return !(
+    typeof result.http_status === "number" &&
+    result.http_status >= 400 &&
+    result.http_status < 500
+  );
+}
+
+function getBackoffDelayMs(
+  retryConfig: RetryConfig,
+  failedAttemptCount: number
+): number {
+  return retryConfig.initialBackoffMs *
+    retryConfig.backoffMultiplier ** (failedAttemptCount - 1);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function executeWebhookWithRetry(
+  url: string,
+  payload: unknown,
+  headers: Record<string, string> = {},
+  timeoutMs: number = 10000,
+  retryConfig: RetryConfig
+): Promise<ExecutionResult> {
+  const maxAttempts = Math.max(1, retryConfig.maxAttempts);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = await executeWebhook(url, payload, headers, timeoutMs);
+
+    if (attempt === maxAttempts || !shouldRetry(result)) {
+      return {
+        ...result,
+        attempt_count: attempt,
+      };
+    }
+
+    await sleep(getBackoffDelayMs(retryConfig, attempt));
+  }
+
+  throw new Error("Webhook retry loop exited without returning a result");
 }
 
 export async function recordExecution(

@@ -1,12 +1,9 @@
 import { createMiddleware } from "hono/factory";
-import { drizzle } from "drizzle-orm/d1";
-import * as schema from "../db/schema.js";
-import type { Env } from "../types.js";
+import type { Database } from "../types.js";
 
-export const dbMiddleware = createMiddleware<{ Bindings: Env }>(
-  async (c, next) => {
-    const db = drizzle(c.env.DB, { schema });
+export function createDbMiddleware(db: Database) {
+  return createMiddleware(async (c, next) => {
     c.set("db", db);
     await next();
-  }
-);
+  });
+}

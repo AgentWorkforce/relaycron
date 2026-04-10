@@ -2,9 +2,8 @@ import { Hono } from "hono";
 import { nanoid } from "nanoid";
 import { apiKeys } from "../db/schema.js";
 import { hashKey } from "../middleware/auth.js";
-import type { Env } from "../types.js";
 
-const auth = new Hono<{ Bindings: Env }>();
+const auth = new Hono();
 
 // Create a new API key (bootstrap endpoint - no auth required)
 auth.post("/keys", async (c) => {

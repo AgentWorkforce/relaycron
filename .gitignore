@@ -5,3 +5,4 @@ dist/
 .turbo/
 *.log
 .npm-cache/
+*.tsbuildinfo

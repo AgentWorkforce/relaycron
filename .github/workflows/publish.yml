@@ -133,7 +133,7 @@ jobs:
                 console.log(pkg.name + ' -> v' + version);
                 for (const depType of ['dependencies', 'devDependencies']) {
                   for (const dep of Object.keys(pkg[depType] || {})) {
-                    if (dep.startsWith('@agentcron/')) {
+                    if (dep.startsWith('@relaycron/')) {
                       pkg[depType][dep] = version;
                     }
                   }
@@ -158,6 +158,7 @@ jobs:
             packages/types/dist/
             packages/sdk/package.json
             packages/sdk/dist/
+            packages/server/package.json
           retention-days: 1
 
   publish-packages:

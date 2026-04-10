@@ -1,5 +1,5 @@
 {
-  "name": "agentcron",
+  "name": "relaycron",
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@10.9.2",
@@ -20,6 +20,7 @@
     "db:migrate": "wrangler d1 migrations apply agentcron-db --local"
   },
   "devDependencies": {
+    "@agent-relay/sdk": "^4.0.5",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   }
