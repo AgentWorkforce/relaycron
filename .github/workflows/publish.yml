@@ -9,9 +9,10 @@ on:
         type: choice
         options:
           - all
+          - types
           - server
           - sdk
-        default: "server"
+        default: "all"
       version:
         description: "Version bump type"
         required: true
@@ -145,6 +146,7 @@ jobs:
 
       - name: Build packages
         run: |
+          npm run build --workspace=packages/types
           npm run build --workspace=packages/server
           npm run build --workspace=packages/sdk
 
@@ -155,6 +157,8 @@ jobs:
           path: |
             package.json
             package-lock.json
+            packages/types/package.json
+            packages/types/dist/
             packages/server/package.json
             packages/server/dist/
             packages/sdk/package.json
@@ -171,6 +175,8 @@ jobs:
       max-parallel: 10
       matrix:
         include:
+          - package: types
+            path: packages/types
           - package: server
             path: packages/server
           - package: sdk
@@ -237,6 +243,7 @@ jobs:
         id: resolve-package
         run: |
           case "${{ github.event.inputs.package }}" in
+            types) echo "path=packages/types" >> "$GITHUB_OUTPUT" ;;
             server) echo "path=packages/server" >> "$GITHUB_OUTPUT" ;;
             sdk) echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
             *)
@@ -305,6 +312,7 @@ jobs:
             ## relaycron v${{ needs.build.outputs.new_version }}
 
             ### Packages
+            - `@relaycron/types@${{ needs.build.outputs.new_version }}`
             - `@relaycron/server@${{ needs.build.outputs.new_version }}`
             - `@relaycron/sdk@${{ needs.build.outputs.new_version }}`
 
