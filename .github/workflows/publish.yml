@@ -9,9 +9,9 @@ on:
         type: choice
         options:
           - all
-          - types
+          - server
           - sdk
-        default: "all"
+        default: "server"
       version:
         description: "Version bump type"
         required: true
@@ -145,7 +145,7 @@ jobs:
 
       - name: Build packages
         run: |
-          npm run build --workspace=packages/types
+          npm run build --workspace=packages/server
           npm run build --workspace=packages/sdk
 
       - name: Upload build artifacts
@@ -154,11 +154,11 @@ jobs:
           name: build-output
           path: |
             package.json
-            packages/types/package.json
-            packages/types/dist/
+            package-lock.json
+            packages/server/package.json
+            packages/server/dist/
             packages/sdk/package.json
             packages/sdk/dist/
-            packages/server/package.json
           retention-days: 1
 
   publish-packages:
@@ -171,8 +171,8 @@ jobs:
       max-parallel: 10
       matrix:
         include:
-          - package: types
-            path: packages/types
+          - package: server
+            path: packages/server
           - package: sdk
             path: packages/sdk
 
@@ -237,7 +237,7 @@ jobs:
         id: resolve-package
         run: |
           case "${{ github.event.inputs.package }}" in
-            types) echo "path=packages/types" >> "$GITHUB_OUTPUT" ;;
+            server) echo "path=packages/server" >> "$GITHUB_OUTPUT" ;;
             sdk) echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
             *)
               echo "Unsupported package: ${{ github.event.inputs.package }}" >&2
@@ -287,7 +287,7 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          git add package.json packages/types/package.json packages/sdk/package.json packages/server/package.json
+          git add package.json package-lock.json packages/types/package.json packages/sdk/package.json packages/server/package.json
           if ! git diff --staged --quiet; then
             git commit -m "chore(release): v${NEW_VERSION}"
             git push
@@ -302,15 +302,16 @@ jobs:
           tag_name: v${{ needs.build.outputs.new_version }}
           name: v${{ needs.build.outputs.new_version }}
           body: |
-            ## agentcron v${{ needs.build.outputs.new_version }}
+            ## relaycron v${{ needs.build.outputs.new_version }}
 
             ### Packages
-            - `@agentcron/types@${{ needs.build.outputs.new_version }}`
-            - `@agentcron/sdk@${{ needs.build.outputs.new_version }}`
+            - `@relaycron/server@${{ needs.build.outputs.new_version }}`
+            - `@relaycron/sdk@${{ needs.build.outputs.new_version }}`
 
             ### Install
             ```bash
-            npm install @agentcron/sdk@${{ needs.build.outputs.new_version }}
+            npm install @relaycron/server@${{ needs.build.outputs.new_version }}
+            npm install @relaycron/sdk@${{ needs.build.outputs.new_version }}
             ```
 
             ### Publish Details
@@ -330,19 +331,21 @@ jobs:
     steps:
       - name: Summary
         run: |
-          echo "## Publish Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Package**: \`${{ github.event.inputs.package }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Version**: \`${{ needs.build.outputs.new_version }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**NPM Tag**: \`${{ github.event.inputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Prerelease**: \`${{ needs.build.outputs.is_prerelease }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Dry Run**: \`${{ github.event.inputs.dry_run }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Provenance**: \`enabled\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Stage | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Build & Version | ${{ needs.build.result == 'success' && 'SUCCESS' || 'FAILURE' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Publish All | ${{ needs.publish-packages.result == 'success' && 'SUCCESS' || (needs.publish-packages.result == 'skipped' && 'SKIPPED' || 'FAILURE') }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Publish Single | ${{ needs.publish-single.result == 'success' && 'SUCCESS' || (needs.publish-single.result == 'skipped' && 'SKIPPED' || 'FAILURE') }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Create Release | ${{ needs.create-release.result == 'success' && 'SUCCESS' || (needs.create-release.result == 'skipped' && 'SKIPPED' || 'FAILURE') }} |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Publish Summary"
+            echo ""
+            echo "**Package**: \`${{ github.event.inputs.package }}\`"
+            echo "**Version**: \`${{ needs.build.outputs.new_version }}\`"
+            echo "**NPM Tag**: \`${{ github.event.inputs.tag }}\`"
+            echo "**Prerelease**: \`${{ needs.build.outputs.is_prerelease }}\`"
+            echo "**Dry Run**: \`${{ github.event.inputs.dry_run }}\`"
+            echo "**Provenance**: \`enabled\`"
+            echo ""
+            echo "### Results"
+            echo "| Stage | Status |"
+            echo "|-------|--------|"
+            echo "| Build & Version | ${{ needs.build.result == 'success' && 'SUCCESS' || 'FAILURE' }} |"
+            echo "| Publish All | ${{ needs.publish-packages.result == 'success' && 'SUCCESS' || (needs.publish-packages.result == 'skipped' && 'SKIPPED' || 'FAILURE') }} |"
+            echo "| Publish Single | ${{ needs.publish-single.result == 'success' && 'SUCCESS' || (needs.publish-single.result == 'skipped' && 'SKIPPED' || 'FAILURE') }} |"
+            echo "| Create Release | ${{ needs.create-release.result == 'success' && 'SUCCESS' || (needs.create-release.result == 'skipped' && 'SKIPPED' || 'FAILURE') }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
