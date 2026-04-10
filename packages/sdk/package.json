@@ -1,6 +1,6 @@
 {
   "name": "@relaycron/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TypeScript SDK for AgentCron — schedule work for AI agents",
   "type": "module",
   "main": "dist/index.js",
@@ -32,7 +32,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@relaycron/types": "0.1.1"
+    "@relaycron/types": "0.1.2"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
