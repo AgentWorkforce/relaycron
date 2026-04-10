@@ -306,12 +306,7 @@ export function createSchedulesRouter(scheduler: Scheduler) {
       updates.next_run_at = data.scheduled_at;
     }
 
-    await db
-      .update(schedules)
-      .set(updates)
-      .where(eq(schedules.id, c.req.param("id")));
-
-    // Pause/resume semantics must also update alarms.
+    // Pause/resume semantics must update next_run_at before the DB write.
     // - pause: cancel any pending alarm
     // - resume: recompute and re-arm next run if possible
     if (data.status === "paused") {
@@ -324,6 +319,11 @@ export function createSchedulesRouter(scheduler: Scheduler) {
         (updates.timezone as string | undefined) ?? existing.timezone
       );
     }
+
+    await db
+      .update(schedules)
+      .set(updates)
+      .where(eq(schedules.id, c.req.param("id")));
 
     // Update alarm if next_run_at changed or status toggled.
     if (updates.next_run_at !== undefined || data.status !== undefined) {

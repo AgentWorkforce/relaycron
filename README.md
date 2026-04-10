@@ -36,7 +36,7 @@ The server runs at `http://localhost:4007` with a SQLite database at `.relaycron
 
 Configure with environment variables:
 - `PORT` — server port (default: 4007)
-- `AGENTCRON_DB_PATH` — database file path (default: `.relaycron/relaycron.db`)
+- `RELAYCRON_DB_PATH` — database file path (default: `.relaycron/relaycron.db`)
 
 ### Create an API Key
 
