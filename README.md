@@ -149,6 +149,7 @@ await cron.register({
 // WebSocket delivery
 cron.connect({
   onConnected: (msg) => console.log("Connected", msg.agent_id),
+  onHeartbeat: (msg) => console.log("Heartbeat", msg.sent_at),
   onTick: (msg) => {
     console.log(`${msg.schedule_name} fired at ${msg.occurred_at}:`, msg.payload);
   },
@@ -165,6 +166,9 @@ const wsSchedule = await cron.registerViaWebSocket({
 });
 
 await cron.cancelViaWebSocket(wsSchedule.id);
+
+// Explicit HTTP cancel endpoint for control planes that prefer request/response APIs.
+await cron.cancelById(wsSchedule.id);
 ```
 
 ## API Routes
@@ -177,6 +181,7 @@ await cron.cancelViaWebSocket(wsSchedule.id);
 | `GET`    | `/v1/schedules`                       | Required | List schedules      |
 | `GET`    | `/v1/schedules/:id`                   | Required | Get schedule        |
 | `PATCH`  | `/v1/schedules/:id`                   | Required | Update schedule     |
+| `POST`   | `/v1/schedules/:id/cancel`            | Required | Cancel schedule     |
 | `DELETE` | `/v1/schedules/:id`                   | Required | Delete schedule     |
 | `GET`    | `/v1/schedules/:id/executions`        | Required | List executions     |
 | `GET`    | `/v1/schedules/:id/executions/:eid`   | Required | Get execution       |
@@ -191,7 +196,7 @@ RelayCron's websocket protocol is documented in [`packages/server/src/ws-protoco
 - `tick` for live cron delivery
 - `heartbeat` for connection liveness
 
-The SDK exposes this flow directly via `connect()`, `waitUntilConnected()`, `registerViaWebSocket()`, and `cancelViaWebSocket()`.
+The SDK exposes this flow directly via `connect()`, `waitUntilConnected()`, `registerViaWebSocket()`, `cancelViaWebSocket()`, and `cancelById()`.
 
 ## License
 

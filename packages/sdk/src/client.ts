@@ -14,6 +14,7 @@ import type {
   WsScheduleRegisteredMessage,
   WsScheduleCancelledMessage,
   WsErrorMessage,
+  WsHeartbeatMessage,
   WsRegisterScheduleMessage,
   WsCancelScheduleMessage,
 } from "@relaycron/types";
@@ -48,6 +49,7 @@ export interface WsEventHandlers {
   onTick?: (msg: WsTickMessage) => void;
   onScheduleFired?: (msg: WsTickMessage) => void;
   onConnected?: (msg: WsHelloOkMessage) => void;
+  onHeartbeat?: (msg: WsHeartbeatMessage) => void;
   onDisconnected?: (code: number, reason: string) => void;
   onError?: (error: Error) => void;
 }
@@ -201,6 +203,10 @@ export class AgentCron {
     await this.deleteSchedule(id);
   }
 
+  async cancelById(id: string): Promise<void> {
+    await this.request("POST", `/v1/schedules/${id}/cancel`);
+  }
+
   // --- Executions ---
 
   async listExecutions(
@@ -290,6 +296,9 @@ export class AgentCron {
             this.lastEventId = msg.event_id;
             this.wsHandlers.onTick?.(msg);
             this.wsHandlers.onScheduleFired?.(msg);
+            break;
+          case "heartbeat":
+            this.wsHandlers.onHeartbeat?.(msg);
             break;
           case "error":
             if (!this.rejectPendingWsRequest(msg)) {

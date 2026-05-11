@@ -24,4 +24,5 @@ export type {
   WsScheduleCancelledMessage,
   WsErrorMessage,
   WsTickMessage,
+  WsHeartbeatMessage,
 } from "@relaycron/types";

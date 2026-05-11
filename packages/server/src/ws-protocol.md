@@ -2,6 +2,91 @@
 
 This is the M1 websocket contract for proactive-runtime integration. The gateway opens one long-lived outbound websocket to RelayCron at `/v1/ws`, authenticates once, optionally resumes from the last processed event, and can register or cancel schedules over the same connection.
 
+## Protocol Shape
+
+```ts
+type ClientHello = {
+  type: "client_hello";
+  api_key: string;
+  last_event_id?: string;
+};
+
+type RegisterSchedule = {
+  type: "register_schedule";
+  request_id?: string;
+  schedule: {
+    name: string;
+    description?: string;
+    schedule:
+      | string
+      | { cron: string; tz?: string }
+      | { at: string };
+    payload?: unknown;
+    metadata?: Record<string, unknown>;
+    delivery:
+      | {
+          type: "webhook";
+          url: string;
+          headers?: Record<string, string>;
+          timeout_ms?: number;
+        }
+      | {
+          type: "websocket";
+          channel?: string;
+          coalesce_missed_ticks?: "none" | "fire-once";
+        };
+  };
+};
+
+type CancelSchedule = {
+  type: "cancel_schedule";
+  request_id?: string;
+  schedule_id: string;
+};
+
+type HelloOk = {
+  type: "hello_ok";
+  agent_id: string;
+  replayed: number;
+  heartbeat_interval_ms: number;
+};
+
+type ScheduleRegistered = {
+  type: "schedule_registered";
+  request_id?: string;
+  schedule: Record<string, unknown>;
+};
+
+type ScheduleCancelled = {
+  type: "schedule_cancelled";
+  request_id?: string;
+  schedule_id: string;
+};
+
+type Tick = {
+  type: "tick";
+  event_id: string;
+  schedule_id: string;
+  schedule_name: string;
+  scheduled_for: string;
+  occurred_at: string;
+  execution_id: string;
+  payload: unknown;
+};
+
+type Heartbeat = {
+  type: "heartbeat";
+  sent_at: string;
+};
+
+type ErrorFrame = {
+  type: "error";
+  code: string;
+  message: string;
+  request_id?: string;
+};
+```
+
 ## Connection
 
 URL:
@@ -73,6 +158,13 @@ Cancels and deletes a schedule by id.
 }
 ```
 
+If the control plane prefers HTTP instead of websocket cancellation, the equivalent endpoint is:
+
+```text
+POST /v1/schedules/:id/cancel
+Authorization: Bearer <api-key>
+```
+
 ## Server Frames
 
 ### `hello_ok`
@@ -140,6 +232,7 @@ Live cron delivery and replay both use the same frame.
 - `scheduled_for` is when the tick was intended to fire.
 - `occurred_at` is when RelayCron emitted the delivery event.
 - `event_id` is the resume cursor. Persist the last processed id and send it back in the next `client_hello`.
+- Reconnect-after-disconnect works by resending `client_hello` with the last processed `event_id` as `last_event_id`.
 
 ### `heartbeat`
 

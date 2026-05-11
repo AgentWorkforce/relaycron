@@ -7,8 +7,9 @@ import {
 import { schedules } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getNextCronDate, isValidCron } from "../engine/cron.js";
-import type { Scheduler } from "../types.js";
+import type { Database, Scheduler } from "../types.js";
 import {
+  cancelScheduleRecord,
   computeNextRunAt,
   createScheduleRecord,
   formatSchedule,
@@ -19,6 +20,32 @@ export function createSchedulesRouter(scheduler: Scheduler) {
   const schedulesRouter = new Hono();
 
   schedulesRouter.use("*", requireAuth);
+
+  const handleCancelRequest = async (
+    db: Database,
+    apiKeyId: string,
+    scheduleId: string
+  ) => {
+    const existing = await cancelScheduleRecord(db, scheduler, apiKeyId, scheduleId);
+
+    if (!existing) {
+      return {
+        ok: false as const,
+        response: {
+          ok: false as const,
+          error: { code: "not_found", message: "Schedule not found" },
+        },
+      };
+    }
+
+    return {
+      ok: true as const,
+      response: {
+        ok: true as const,
+        data: { cancelled: true, schedule_id: scheduleId },
+      },
+    };
+  };
 
   // Create schedule
   schedulesRouter.post("/", async (c) => {
@@ -246,34 +273,18 @@ export function createSchedulesRouter(scheduler: Scheduler) {
   schedulesRouter.delete("/:id", async (c) => {
     const auth = c.get("auth");
     const db = c.get("db");
+    const result = await handleCancelRequest(db, auth.apiKeyId, c.req.param("id"));
 
-    const [existing] = await db
-      .select()
-      .from(schedules)
-      .where(
-        and(
-          eq(schedules.id, c.req.param("id")),
-          eq(schedules.api_key_id, auth.apiKeyId)
-        )
-      )
-      .limit(1);
+    return c.json(result.response, result.ok ? 200 : 404);
+  });
 
-    if (!existing) {
-      return c.json(
-        {
-          ok: false,
-          error: { code: "not_found", message: "Schedule not found" },
-        },
-        404
-      );
-    }
+  // Explicit cancel-by-id endpoint for control planes that want a non-destructive verb.
+  schedulesRouter.post("/:id/cancel", async (c) => {
+    const auth = c.get("auth");
+    const db = c.get("db");
+    const result = await handleCancelRequest(db, auth.apiKeyId, c.req.param("id"));
 
-    // Cancel alarm via scheduler
-    scheduler.cancelAlarm(c.req.param("id"));
-
-    await db.delete(schedules).where(eq(schedules.id, c.req.param("id")));
-
-    return c.json({ ok: true, data: { deleted: true } });
+    return c.json(result.response, result.ok ? 200 : 404);
   });
 
   return schedulesRouter;

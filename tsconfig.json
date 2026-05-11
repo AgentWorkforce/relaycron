@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@relaycron/types": ["./packages/types/src/index.ts"],
+      "@relaycron/sdk": ["./packages/sdk/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/types/src/**/*.ts",
+    "packages/sdk/src/**/*.ts",
+    "packages/server/src/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "packages/**/dist/**",
+    "workflows/**"
+  ]
+}
