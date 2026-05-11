@@ -1,6 +1,6 @@
-# AgentCron
+# RelayCron
 
-A scheduling service for AI agents. Create schedules with payloads that get delivered via webhook POST or WebSocket at specified times or cron intervals.
+A scheduling service for agents. Schedules can deliver to a webhook endpoint or to a long-lived websocket session using the proactive-runtime protocol.
 
 ## Project Structure
 
@@ -66,6 +66,34 @@ curl -X POST http://localhost:4007/v1/schedules \
   }'
 ```
 
+### Register a WebSocket Schedule
+
+```bash
+curl -X POST http://localhost:4007/v1/schedules \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ac_YOUR_KEY_HERE" \
+  -d '{
+    "name": "agent-gateway-tick",
+    "schedule": { "cron": "*/5 * * * *", "tz": "America/New_York" },
+    "payload": { "workspace": "support" },
+    "delivery": {
+      "type": "websocket",
+      "coalesce_missed_ticks": "fire-once"
+    }
+  }'
+```
+
+Then connect a websocket client to `ws://localhost:4007/v1/ws` and send:
+
+```json
+{
+  "type": "client_hello",
+  "api_key": "ac_YOUR_KEY_HERE"
+}
+```
+
+The server replies with `hello_ok`, then streams `tick` events. Full protocol details live in [`packages/server/src/ws-protocol.md`](packages/server/src/ws-protocol.md).
+
 ### Build
 
 ```bash
@@ -108,11 +136,19 @@ await cron.createSchedule({
   },
 });
 
+// User-friendly register() API for the proactive runtime contract.
+await cron.register({
+  name: "proactive-runtime",
+  schedule: { cron: "*/5 * * * *", tz: "America/New_York" },
+  payload: { workspace: "support" },
+  webSocket: { coalesceMissedTicks: "fire-once" },
+});
+
 // WebSocket delivery
 cron.connect({
   onConnected: () => console.log("Connected"),
-  onScheduleFired: (msg) => {
-    console.log(`${msg.schedule_name} fired:`, msg.payload);
+  onTick: (msg) => {
+    console.log(`${msg.schedule_name} fired at ${msg.occurred_at}:`, msg.payload);
   },
 });
 ```
@@ -131,6 +167,15 @@ cron.connect({
 | `GET`    | `/v1/schedules/:id/executions`        | Required | List executions     |
 | `GET`    | `/v1/schedules/:id/executions/:eid`   | Required | Get execution       |
 | `GET`    | `/v1/ws`                              | WS auth  | WebSocket endpoint  |
+
+## WebSocket Protocol
+
+RelayCron's websocket protocol is documented in [`packages/server/src/ws-protocol.md`](packages/server/src/ws-protocol.md). The required frames for the proactive runtime M1 integration are:
+
+- `client_hello` for authentication and resume-after-disconnect
+- `register_schedule` and `cancel_schedule` for control-plane operations
+- `tick` for live cron delivery
+- `heartbeat` for connection liveness
 
 ## License
 

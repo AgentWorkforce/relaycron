@@ -8,6 +8,9 @@ export type ScheduleType = z.infer<typeof ScheduleType>;
 export const TransportType = z.enum(["webhook", "websocket"]);
 export type TransportType = z.infer<typeof TransportType>;
 
+export const MissedTickPolicy = z.enum(["none", "fire-once"]);
+export type MissedTickPolicy = z.infer<typeof MissedTickPolicy>;
+
 export const ScheduleStatus = z.enum([
   "active",
   "paused",
@@ -30,6 +33,7 @@ export type WebhookTransportConfig = z.infer<typeof WebhookTransportConfig>;
 
 export const WebsocketTransportConfig = z.object({
   channel: z.string().min(1).max(128).optional(),
+  coalesce_missed_ticks: MissedTickPolicy.default("none"),
 });
 export type WebsocketTransportConfig = z.infer<typeof WebsocketTransportConfig>;
 
@@ -56,6 +60,37 @@ export const CreateScheduleRequest = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 export type CreateScheduleRequest = z.infer<typeof CreateScheduleRequest>;
+
+export const RegisterScheduleSpec = z.union([
+  z.string().min(1).max(128),
+  z.object({
+    cron: z.string().min(1).max(128),
+    tz: z.string().optional(),
+  }),
+  z.object({
+    at: z.string().datetime(),
+  }),
+]);
+export type RegisterScheduleSpec = z.infer<typeof RegisterScheduleSpec>;
+
+export const RegisterScheduleRequest = z.object({
+  name: z.string().min(1).max(256),
+  description: z.string().max(1024).optional(),
+  schedule: RegisterScheduleSpec,
+  payload: z.unknown().optional(),
+  delivery: z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("webhook"),
+      ...WebhookTransportConfig.shape,
+    }),
+    z.object({
+      type: z.literal("websocket"),
+      ...WebsocketTransportConfig.shape,
+    }),
+  ]),
+  metadata: z.record(z.unknown()).optional(),
+});
+export type RegisterScheduleRequest = z.infer<typeof RegisterScheduleRequest>;
 
 export const UpdateScheduleRequest = z.object({
   name: z.string().min(1).max(256).optional(),
@@ -144,54 +179,85 @@ export interface PaginatedResponse<T> {
 // --- WebSocket message types ---
 
 export const WsMessageType = z.enum([
-  "auth",
-  "auth_ok",
-  "schedule_fired",
-  "ping",
-  "pong",
+  "client_hello",
+  "hello_ok",
+  "register_schedule",
+  "schedule_registered",
+  "cancel_schedule",
+  "schedule_cancelled",
+  "tick",
+  "heartbeat",
   "error",
-  "subscribe",
-  "unsubscribe",
 ]);
 export type WsMessageType = z.infer<typeof WsMessageType>;
 
-export interface WsAuthMessage {
-  type: "auth";
+export interface WsClientHelloMessage {
+  type: "client_hello";
   api_key: string;
+  last_event_id?: string;
 }
 
-export interface WsAuthOkMessage {
-  type: "auth_ok";
+export interface WsHelloOkMessage {
+  type: "hello_ok";
   agent_id: string;
+  replayed: number;
+  heartbeat_interval_ms: number;
 }
 
-export interface WsScheduleFiredMessage {
-  type: "schedule_fired";
+export interface WsRegisterScheduleMessage {
+  type: "register_schedule";
+  request_id?: string;
+  schedule: RegisterScheduleRequest;
+}
+
+export interface WsScheduleRegisteredMessage {
+  type: "schedule_registered";
+  request_id?: string;
+  schedule: Schedule;
+}
+
+export interface WsCancelScheduleMessage {
+  type: "cancel_schedule";
+  request_id?: string;
+  schedule_id: string;
+}
+
+export interface WsScheduleCancelledMessage {
+  type: "schedule_cancelled";
+  request_id?: string;
+  schedule_id: string;
+}
+
+export interface WsTickMessage {
+  type: "tick";
+  event_id: string;
   schedule_id: string;
   schedule_name: string;
+  scheduled_for: string;
+  occurred_at: string;
   execution_id: string;
   payload: unknown;
-  fired_at: string;
 }
 
-export interface WsPingMessage {
-  type: "ping";
-}
-
-export interface WsPongMessage {
-  type: "pong";
+export interface WsHeartbeatMessage {
+  type: "heartbeat";
+  sent_at: string;
 }
 
 export interface WsErrorMessage {
   type: "error";
   code: string;
   message: string;
+  request_id?: string;
 }
 
 export type WsMessage =
-  | WsAuthMessage
-  | WsAuthOkMessage
-  | WsScheduleFiredMessage
-  | WsPingMessage
-  | WsPongMessage
+  | WsClientHelloMessage
+  | WsHelloOkMessage
+  | WsRegisterScheduleMessage
+  | WsScheduleRegisteredMessage
+  | WsCancelScheduleMessage
+  | WsScheduleCancelledMessage
+  | WsTickMessage
+  | WsHeartbeatMessage
   | WsErrorMessage;

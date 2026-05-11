@@ -2,6 +2,7 @@ export { AgentCron } from "./client.js";
 export type {
   AgentCronOptions,
   CreateScheduleParams,
+  RegisterScheduleParams,
   UpdateScheduleParams,
   ListOptions,
   WsEventHandlers,
@@ -17,4 +18,5 @@ export type {
   ScheduleStatus,
   ExecutionStatus,
   WsMessage,
+  WsTickMessage,
 } from "@relaycron/types";

@@ -8,6 +8,21 @@ export interface Scheduler {
   cancelAlarm(id: string): void;
 }
 
+export interface TickDispatchRequest {
+  apiKeyId: string;
+  scheduleId: string;
+  scheduleName: string;
+  executionId: string;
+  payload: unknown;
+  scheduledFor: string;
+  occurredAt: string;
+  coalesceMissedTicks: "none" | "fire-once";
+}
+
+export interface TickDispatcher {
+  deliverTick(request: TickDispatchRequest): void;
+}
+
 export interface AuthContext {
   apiKeyId: string;
 }

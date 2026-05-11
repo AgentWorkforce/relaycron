@@ -1,25 +1,31 @@
-import { serve } from "@hono/node-server";
+import { createAdaptorServer } from "@hono/node-server";
 import { createDatabase } from "./db/sqlite.js";
 import { LocalScheduler } from "./engine/scheduler.js";
 import { createApp } from "./app.js";
+import { RelaycronWsGateway } from "./ws-gateway.js";
 
 const db = createDatabase();
-const scheduler = new LocalScheduler(db);
+const schedulerWithTicks = new LocalScheduler(db);
+const wsGateway = new RelaycronWsGateway(db, schedulerWithTicks);
+schedulerWithTicks.setTickDispatcher(wsGateway);
 
-await scheduler.restoreAlarms();
+await schedulerWithTicks.restoreAlarms();
 
 const port = Number(process.env.PORT) || 4007;
+const app = createApp(db, schedulerWithTicks);
+const server = createAdaptorServer({ fetch: app.fetch, port });
+wsGateway.attach(server);
 
-serve({ fetch: createApp(db, scheduler).fetch, port });
+server.listen(port);
 
 console.log(`RelayCron server running on http://localhost:${port}`);
 
 process.on("SIGINT", () => {
-  scheduler.cancelAll();
+  schedulerWithTicks.cancelAll();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  scheduler.cancelAll();
+  schedulerWithTicks.cancelAll();
   process.exit(0);
 });

@@ -4,9 +4,11 @@ import type {
   ApiResponse,
   PaginatedResponse,
   CreateScheduleRequest,
+  RegisterScheduleRequest,
+  RegisterScheduleSpec,
   UpdateScheduleRequest,
   WsMessage,
-  WsScheduleFiredMessage,
+  WsTickMessage,
 } from "@relaycron/types";
 
 export interface AgentCronOptions {
@@ -16,6 +18,18 @@ export interface AgentCronOptions {
 
 export type CreateScheduleParams = CreateScheduleRequest;
 export type UpdateScheduleParams = UpdateScheduleRequest;
+export interface RegisterScheduleParams {
+  name: string;
+  description?: string;
+  schedule: RegisterScheduleSpec;
+  payload?: unknown;
+  metadata?: Record<string, unknown>;
+  deliveryUrl?: string;
+  webSocket?: {
+    channel?: string;
+    coalesceMissedTicks?: "none" | "fire-once";
+  };
+}
 
 export interface ListOptions {
   limit?: number;
@@ -24,7 +38,8 @@ export interface ListOptions {
 }
 
 export interface WsEventHandlers {
-  onScheduleFired?: (msg: WsScheduleFiredMessage) => void;
+  onTick?: (msg: WsTickMessage) => void;
+  onScheduleFired?: (msg: WsTickMessage) => void;
   onConnected?: () => void;
   onDisconnected?: (code: number, reason: string) => void;
   onError?: (error: Error) => void;
@@ -50,6 +65,7 @@ export class AgentCron {
   private maxReconnectAttempts = 10;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = false;
+  private lastEventId: string | undefined;
 
   constructor(options: AgentCronOptions) {
     this.apiKey = options.apiKey;
@@ -123,6 +139,14 @@ export class AgentCron {
     return this.request<Schedule>("POST", "/v1/schedules", params);
   }
 
+  async register(params: RegisterScheduleParams): Promise<Schedule> {
+    return this.request<Schedule>(
+      "POST",
+      "/v1/schedules",
+      this.toRegisterScheduleRequest(params)
+    );
+  }
+
   async getSchedule(id: string): Promise<Schedule> {
     return this.request<Schedule>("GET", `/v1/schedules/${id}`);
   }
@@ -150,6 +174,10 @@ export class AgentCron {
 
   async deleteSchedule(id: string): Promise<void> {
     await this.request("DELETE", `/v1/schedules/${id}`);
+  }
+
+  async cancel(id: string): Promise<void> {
+    await this.deleteSchedule(id);
   }
 
   // --- Executions ---
@@ -203,7 +231,13 @@ export class AgentCron {
     this.ws = new WebSocket(`${wsUrl}/v1/ws`);
 
     this.ws.onopen = () => {
-      this.ws!.send(JSON.stringify({ type: "auth", api_key: this.apiKey }));
+      this.ws!.send(
+        JSON.stringify({
+          type: "client_hello",
+          api_key: this.apiKey,
+          last_event_id: this.lastEventId,
+        })
+      );
     };
 
     this.ws.onmessage = (event) => {
@@ -213,12 +247,14 @@ export class AgentCron {
         ) as WsMessage;
 
         switch (msg.type) {
-          case "auth_ok":
+          case "hello_ok":
             this.reconnectAttempts = 0;
             this.wsHandlers.onConnected?.();
             break;
-          case "schedule_fired":
-            this.wsHandlers.onScheduleFired?.(msg as WsScheduleFiredMessage);
+          case "tick":
+            this.lastEventId = msg.event_id;
+            this.wsHandlers.onTick?.(msg);
+            this.wsHandlers.onScheduleFired?.(msg);
             break;
           case "error":
             this.wsHandlers.onError?.(
@@ -262,5 +298,39 @@ export class AgentCron {
     this.reconnectTimer = setTimeout(() => {
       this.openWebSocket();
     }, delay);
+  }
+
+  private toRegisterScheduleRequest(
+    params: RegisterScheduleParams
+  ): RegisterScheduleRequest {
+    if (!params.deliveryUrl && !params.webSocket) {
+      throw new Error("register() requires either deliveryUrl or webSocket");
+    }
+
+    if (params.deliveryUrl && params.webSocket) {
+      throw new Error(
+        "register() accepts either deliveryUrl or webSocket, not both"
+      );
+    }
+
+    return {
+      name: params.name,
+      description: params.description,
+      schedule: params.schedule,
+      payload: params.payload,
+      metadata: params.metadata,
+      delivery: params.deliveryUrl
+        ? {
+            type: "webhook",
+            url: params.deliveryUrl,
+            timeout_ms: 10000,
+          }
+        : {
+            type: "websocket",
+            channel: params.webSocket?.channel,
+            coalesce_missed_ticks:
+              params.webSocket?.coalesceMissedTicks ?? "none",
+          },
+    };
   }
 }

@@ -35,7 +35,8 @@
     "cron-parser": "^5.0.0",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.7.0",
-    "nanoid": "^5.0.0"
+    "nanoid": "^5.0.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",

@@ -8,5 +8,12 @@ export {
   recordExecution,
 } from "./engine/executor.js";
 export { LocalScheduler } from "./engine/scheduler.js";
-export type { Database, Scheduler, AuthContext } from "./types.js";
+export { RelaycronWsGateway } from "./ws-gateway.js";
+export type {
+  Database,
+  Scheduler,
+  AuthContext,
+  TickDispatcher,
+  TickDispatchRequest,
+} from "./types.js";
 export type { ExecutionResult, RetryConfig } from "./engine/executor.js";

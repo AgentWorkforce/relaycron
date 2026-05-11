@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import { eq, and, desc, lt } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import {
-  CreateScheduleRequest,
   UpdateScheduleRequest,
   ListSchedulesQuery,
 } from "@relaycron/types";
@@ -10,6 +8,12 @@ import { schedules } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getNextCronDate, isValidCron } from "../engine/cron.js";
 import type { Scheduler } from "../types.js";
+import {
+  computeNextRunAt,
+  createScheduleRecord,
+  formatSchedule,
+  parseScheduleRequest,
+} from "../lib/schedules.js";
 
 export function createSchedulesRouter(scheduler: Scheduler) {
   const schedulesRouter = new Hono();
@@ -19,123 +23,28 @@ export function createSchedulesRouter(scheduler: Scheduler) {
   // Create schedule
   schedulesRouter.post("/", async (c) => {
     const raw = await c.req.json();
-    const parsed = CreateScheduleRequest.safeParse(raw);
-    if (!parsed.success) {
+    const parsed = parseScheduleRequest(raw);
+    if (!parsed.ok) {
       return c.json(
         {
           ok: false,
           error: {
-            code: "validation_error",
-            message: parsed.error.issues
-              .map((i) => `${i.path.join(".")}: ${i.message}`)
-              .join("; "),
+            code: parsed.error.code,
+            message: parsed.error.message,
           },
         },
         400
       );
     }
 
-    const data = parsed.data;
-
-    // Validate cron expression
-    if (data.schedule_type === "cron") {
-      if (!data.cron_expression) {
-        return c.json(
-          {
-            ok: false,
-            error: {
-              code: "validation_error",
-              message: "cron_expression is required for cron schedules",
-            },
-          },
-          400
-        );
-      }
-      if (!isValidCron(data.cron_expression)) {
-        return c.json(
-          {
-            ok: false,
-            error: {
-              code: "validation_error",
-              message: "Invalid cron expression",
-            },
-          },
-          400
-        );
-      }
-    }
-
-    if (data.schedule_type === "once" && !data.scheduled_at) {
-      return c.json(
-        {
-          ok: false,
-          error: {
-            code: "validation_error",
-            message: "scheduled_at is required for one-time schedules",
-          },
-        },
-        400
-      );
-    }
-
-    // Calculate next run
-    let nextRunAt: string | null = null;
-    if (data.schedule_type === "cron" && data.cron_expression) {
-      const next = getNextCronDate(data.cron_expression, data.timezone);
-      nextRunAt = next ? next.toISOString() : null;
-    } else if (data.schedule_type === "once" && data.scheduled_at) {
-      nextRunAt = data.scheduled_at;
-    }
-
-    const id = nanoid();
-    const now = new Date().toISOString();
     const auth = c.get("auth");
-
-    if (data.transport.type === "websocket") {
-      return c.json(
-        {
-          ok: false,
-          error: {
-            code: "not_supported",
-            message:
-              "WebSocket transport delivery is not yet available end-to-end. Use webhook transport.",
-          },
-        },
-        400
-      );
-    }
-
-    const transportConfig = { ...data.transport };
-
-    const record = {
-      id,
-      api_key_id: auth.apiKeyId,
-      name: data.name,
-      description: data.description ?? null,
-      schedule_type: data.schedule_type,
-      cron_expression: data.cron_expression ?? null,
-      scheduled_at: data.scheduled_at ?? null,
-      timezone: data.timezone,
-      payload: JSON.stringify(data.payload),
-      transport_type: data.transport.type,
-      transport_config: JSON.stringify(transportConfig),
-      status: "active" as const,
-      next_run_at: nextRunAt,
-      last_run_at: null,
-      run_count: 0,
-      failure_count: 0,
-      metadata: data.metadata ? JSON.stringify(data.metadata) : null,
-      created_at: now,
-      updated_at: now,
-    };
-
     const db = c.get("db");
-    await db.insert(schedules).values(record);
-
-    // Set alarm via scheduler
-    if (nextRunAt) {
-      scheduler.setAlarm(id, nextRunAt);
-    }
+    const record = await createScheduleRecord(
+      db,
+      scheduler,
+      auth.apiKeyId,
+      parsed.data
+    );
 
     return c.json(
       {
@@ -265,19 +174,6 @@ export function createSchedulesRouter(scheduler: Scheduler) {
       updates.metadata = JSON.stringify(data.metadata);
 
     if (data.transport !== undefined) {
-      if (data.transport.type === "websocket") {
-        return c.json(
-          {
-            ok: false,
-            error: {
-              code: "not_supported",
-              message:
-                "WebSocket transport delivery is not yet available end-to-end. Use webhook transport.",
-            },
-          },
-          400
-        );
-      }
       updates.transport_type = data.transport.type;
       updates.transport_config = JSON.stringify(data.transport);
     }
@@ -381,46 +277,4 @@ export function createSchedulesRouter(scheduler: Scheduler) {
   });
 
   return schedulesRouter;
-}
-
-function computeNextRunAt(
-  scheduleType: "once" | "cron",
-  cronExpression: string | null,
-  scheduledAt: string | null,
-  timezone: string
-): string | null {
-  if (scheduleType === "cron" && cronExpression) {
-    const next = getNextCronDate(cronExpression, timezone);
-    return next ? next.toISOString() : null;
-  }
-
-  if (scheduleType === "once" && scheduledAt) {
-    // One-time schedules in the past should not be re-armed on resume.
-    return new Date(scheduledAt).getTime() > Date.now() ? scheduledAt : null;
-  }
-
-  return null;
-}
-
-function formatSchedule(row: typeof schedules.$inferSelect) {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    schedule_type: row.schedule_type,
-    cron_expression: row.cron_expression,
-    scheduled_at: row.scheduled_at,
-    timezone: row.timezone,
-    payload: JSON.parse(row.payload),
-    transport_type: row.transport_type,
-    transport_config: JSON.parse(row.transport_config),
-    status: row.status,
-    next_run_at: row.next_run_at,
-    last_run_at: row.last_run_at,
-    run_count: row.run_count,
-    failure_count: row.failure_count,
-    metadata: row.metadata ? JSON.parse(row.metadata) : null,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
 }

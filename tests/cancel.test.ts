@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AgentCron } from "@relaycron/sdk";
+import { AgentCron } from "../packages/sdk/src/index.js";
 
-test("deleteSchedule cancels a schedule by id over HTTP", async (t) => {
+test("cancel deletes a schedule by id over HTTP", async (t) => {
   const originalFetch = globalThis.fetch;
-  const calls = [];
+  const calls: Array<{
+    url: string;
+    method: string;
+    headers: Headers;
+  }> = [];
 
   globalThis.fetch = (async (input, init) => {
     calls.push({
@@ -13,11 +17,13 @@ test("deleteSchedule cancels a schedule by id over HTTP", async (t) => {
       method: init?.method ?? "GET",
       headers: new Headers(init?.headers),
     });
+
     return new Response(JSON.stringify({ ok: true, data: {} }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  });
+  }) as typeof globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
@@ -27,10 +33,10 @@ test("deleteSchedule cancels a schedule by id over HTTP", async (t) => {
     baseUrl: "https://relaycron.test",
   });
 
-  await client.deleteSchedule("sched_123");
+  await client.cancel("sched_123");
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://relaycron.test/v1/schedules/sched_123");
-  assert.equal(calls[0].method, "DELETE");
-  assert.equal(calls[0].headers.get("authorization"), "Bearer ac_test_key");
+  assert.equal(calls[0]?.url, "https://relaycron.test/v1/schedules/sched_123");
+  assert.equal(calls[0]?.method, "DELETE");
+  assert.equal(calls[0]?.headers.get("authorization"), "Bearer ac_test_key");
 });
