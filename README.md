@@ -94,6 +94,8 @@ Then connect a websocket client to `ws://localhost:4007/v1/ws` and send:
 
 The server replies with `hello_ok`, then streams `tick` events. Full protocol details live in [`packages/server/src/ws-protocol.md`](packages/server/src/ws-protocol.md).
 
+If you reconnect with `last_event_id`, RelayCron replays retained missed ticks after that cursor. If you omit `last_event_id`, the socket starts in live-only mode and does not replay older buffered ticks.
+
 ### Build
 
 ```bash
@@ -146,11 +148,23 @@ await cron.register({
 
 // WebSocket delivery
 cron.connect({
-  onConnected: () => console.log("Connected"),
+  onConnected: (msg) => console.log("Connected", msg.agent_id),
   onTick: (msg) => {
     console.log(`${msg.schedule_name} fired at ${msg.occurred_at}:`, msg.payload);
   },
 });
+
+await cron.waitUntilConnected();
+
+// Register and cancel over the same websocket control plane used for delivery.
+const wsSchedule = await cron.registerViaWebSocket({
+  name: "support-digest",
+  schedule: { cron: "*/5 * * * *", tz: "America/New_York" },
+  payload: { workspace: "support" },
+  webSocket: { coalesceMissedTicks: "fire-once" },
+});
+
+await cron.cancelViaWebSocket(wsSchedule.id);
 ```
 
 ## API Routes
@@ -176,6 +190,8 @@ RelayCron's websocket protocol is documented in [`packages/server/src/ws-protoco
 - `register_schedule` and `cancel_schedule` for control-plane operations
 - `tick` for live cron delivery
 - `heartbeat` for connection liveness
+
+The SDK exposes this flow directly via `connect()`, `waitUntilConnected()`, `registerViaWebSocket()`, and `cancelViaWebSocket()`.
 
 ## License
 

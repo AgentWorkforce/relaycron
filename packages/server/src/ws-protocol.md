@@ -27,7 +27,8 @@ Sent immediately after the websocket opens.
 ```
 
 - `api_key` authenticates the connection.
-- `last_event_id` is optional. When present, RelayCron replays buffered `tick` events after that event id. If the id is no longer retained in memory, RelayCron replays the retained buffer it still has.
+- `last_event_id` is optional. When omitted, RelayCron starts in live-only mode and does not replay older buffered ticks.
+- When `last_event_id` is present, RelayCron replays buffered `tick` events after that event id. If the id is no longer retained in memory, RelayCron replays the retained buffer it still has.
 
 ### `register_schedule`
 

@@ -277,6 +277,10 @@ export class RelaycronWsGateway implements TickDispatcher {
     apiKeyId: string,
     lastEventId?: string
   ): BufferedTick[] {
+    if (!lastEventId) {
+      return [];
+    }
+
     const buffered = this.bufferedTicks.get(apiKeyId) ?? [];
     if (buffered.length === 0) {
       return [];

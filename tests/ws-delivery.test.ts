@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RelaycronWsGateway } from "../packages/server/src/ws-gateway.js";
+import { RelaycronWsGateway } from "../packages/server/dist/ws-gateway.js";
 
 class FakeSocket {
   readonly readyState = 1;

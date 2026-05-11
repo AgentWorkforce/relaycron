@@ -8,6 +8,7 @@ export type {
   WsEventHandlers,
 } from "./client.js";
 export type {
+  RegisterScheduleRequest,
   Schedule,
   Execution,
   ApiResponse,
@@ -18,5 +19,9 @@ export type {
   ScheduleStatus,
   ExecutionStatus,
   WsMessage,
+  WsHelloOkMessage,
+  WsScheduleRegisteredMessage,
+  WsScheduleCancelledMessage,
+  WsErrorMessage,
   WsTickMessage,
 } from "@relaycron/types";

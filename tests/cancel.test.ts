@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AgentCron } from "../packages/sdk/src/index.js";
+import { AgentCron } from "../packages/sdk/dist/index.js";
 
 test("cancel deletes a schedule by id over HTTP", async (t) => {
   const originalFetch = globalThis.fetch;

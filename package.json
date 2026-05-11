@@ -15,7 +15,7 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "test": "turbo test",
+    "test": "turbo test && node --test tests/ws-delivery.test.ts tests/cancel.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply agentcron-db --local"
   },

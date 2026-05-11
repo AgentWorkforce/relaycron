@@ -8,7 +8,14 @@ import type {
   RegisterScheduleSpec,
   UpdateScheduleRequest,
   WsMessage,
+  WsMessageType,
   WsTickMessage,
+  WsHelloOkMessage,
+  WsScheduleRegisteredMessage,
+  WsScheduleCancelledMessage,
+  WsErrorMessage,
+  WsRegisterScheduleMessage,
+  WsCancelScheduleMessage,
 } from "@relaycron/types";
 
 export interface AgentCronOptions {
@@ -40,9 +47,15 @@ export interface ListOptions {
 export interface WsEventHandlers {
   onTick?: (msg: WsTickMessage) => void;
   onScheduleFired?: (msg: WsTickMessage) => void;
-  onConnected?: () => void;
+  onConnected?: (msg: WsHelloOkMessage) => void;
   onDisconnected?: (code: number, reason: string) => void;
   onError?: (error: Error) => void;
+}
+
+interface PendingWsRequest<T> {
+  expectedType: WsMessageType;
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
 }
 
 class HttpError extends Error {
@@ -66,6 +79,14 @@ export class AgentCron {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = false;
   private lastEventId: string | undefined;
+  private isWsAuthenticated = false;
+  private wsReady: Promise<void> | null = null;
+  private resolveWsReady: (() => void) | null = null;
+  private rejectWsReady: ((error: Error) => void) | null = null;
+  private pendingWsRequests = new Map<
+    string,
+    PendingWsRequest<WsScheduleRegisteredMessage | WsScheduleCancelledMessage>
+  >();
 
   constructor(options: AgentCronOptions) {
     this.apiKey = options.apiKey;
@@ -208,6 +229,7 @@ export class AgentCron {
     this.wsHandlers = handlers;
     this.shouldReconnect = true;
     this.reconnectAttempts = 0;
+    this.ensureWsReadyPromise();
     this.openWebSocket();
   }
 
@@ -221,6 +243,9 @@ export class AgentCron {
       this.ws.close(1000, "Client disconnect");
       this.ws = null;
     }
+    this.isWsAuthenticated = false;
+    this.rejectPendingWsRequests(new Error("WebSocket disconnected"));
+    this.rejectWsReadyPromise(new Error("WebSocket disconnected"));
   }
 
   private openWebSocket(): void {
@@ -229,6 +254,8 @@ export class AgentCron {
       .replace("http://", "ws://");
 
     this.ws = new WebSocket(`${wsUrl}/v1/ws`);
+    this.isWsAuthenticated = false;
+    this.ensureWsReadyPromise();
 
     this.ws.onopen = () => {
       this.ws!.send(
@@ -249,7 +276,15 @@ export class AgentCron {
         switch (msg.type) {
           case "hello_ok":
             this.reconnectAttempts = 0;
-            this.wsHandlers.onConnected?.();
+            this.isWsAuthenticated = true;
+            this.resolveWsReadyPromise();
+            this.wsHandlers.onConnected?.(msg);
+            break;
+          case "schedule_registered":
+            this.resolvePendingWsRequest(msg.request_id, "schedule_registered", msg);
+            break;
+          case "schedule_cancelled":
+            this.resolvePendingWsRequest(msg.request_id, "schedule_cancelled", msg);
             break;
           case "tick":
             this.lastEventId = msg.event_id;
@@ -257,9 +292,11 @@ export class AgentCron {
             this.wsHandlers.onScheduleFired?.(msg);
             break;
           case "error":
-            this.wsHandlers.onError?.(
-              new Error(`${msg.code}: ${msg.message}`)
-            );
+            if (!this.rejectPendingWsRequest(msg)) {
+              this.wsHandlers.onError?.(
+                new Error(`${msg.code}: ${msg.message}`)
+              );
+            }
             break;
         }
       } catch (err) {
@@ -270,14 +307,62 @@ export class AgentCron {
     };
 
     this.ws.onclose = (event) => {
+      const reason = event.reason || "WebSocket closed";
+      this.isWsAuthenticated = false;
+      this.rejectPendingWsRequests(new Error(reason));
+      this.rejectWsReadyPromise(new Error(reason));
       this.wsHandlers.onDisconnected?.(event.code, event.reason);
       this.ws = null;
       this.maybeReconnect();
     };
 
     this.ws.onerror = () => {
-      this.wsHandlers.onError?.(new Error("WebSocket connection error"));
+      const error = new Error("WebSocket connection error");
+      this.rejectWsReadyPromise(error);
+      this.wsHandlers.onError?.(error);
     };
+  }
+
+  async waitUntilConnected(): Promise<void> {
+    if (this.isWsAuthenticated) {
+      return;
+    }
+
+    if (!this.wsReady) {
+      throw new Error("WebSocket connection has not been started. Call connect() first.");
+    }
+
+    await this.wsReady;
+  }
+
+  async registerViaWebSocket(
+    params: RegisterScheduleParams
+  ): Promise<Schedule> {
+    const response = await this.sendWsRequest<
+      WsScheduleRegisteredMessage,
+      WsRegisterScheduleMessage
+    >(
+      "schedule_registered",
+      {
+        type: "register_schedule",
+        schedule: this.toRegisterScheduleRequest(params),
+      }
+    );
+
+    return response.schedule;
+  }
+
+  async cancelViaWebSocket(id: string): Promise<void> {
+    await this.sendWsRequest<
+      WsScheduleCancelledMessage,
+      WsCancelScheduleMessage
+    >(
+      "schedule_cancelled",
+      {
+        type: "cancel_schedule",
+        schedule_id: id,
+      }
+    );
   }
 
   private maybeReconnect(): void {
@@ -298,6 +383,99 @@ export class AgentCron {
     this.reconnectTimer = setTimeout(() => {
       this.openWebSocket();
     }, delay);
+  }
+
+  private async sendWsRequest<
+    TResponse extends WsScheduleRegisteredMessage | WsScheduleCancelledMessage,
+    TRequest extends WsRegisterScheduleMessage | WsCancelScheduleMessage,
+  >(expectedType: TResponse["type"], message: Omit<TRequest, "request_id">): Promise<TResponse> {
+    await this.waitUntilConnected();
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket is not connected");
+    }
+
+    const requestId = crypto.randomUUID();
+    const payload = { ...message, request_id: requestId } as TRequest;
+
+    const responsePromise = new Promise<TResponse>((resolve, reject) => {
+      this.pendingWsRequests.set(requestId, {
+        expectedType,
+        resolve: (value) => resolve(value as TResponse),
+        reject,
+      });
+    });
+
+    this.ws.send(JSON.stringify(payload));
+    return responsePromise;
+  }
+
+  private resolvePendingWsRequest(
+    requestId: string | undefined,
+    expectedType: "schedule_registered" | "schedule_cancelled",
+    message: WsScheduleRegisteredMessage | WsScheduleCancelledMessage
+  ): void {
+    if (!requestId) {
+      return;
+    }
+
+    const pending = this.pendingWsRequests.get(requestId);
+    if (!pending || pending.expectedType !== expectedType) {
+      return;
+    }
+
+    this.pendingWsRequests.delete(requestId);
+    pending.resolve(message);
+  }
+
+  private rejectPendingWsRequest(message: WsErrorMessage): boolean {
+    if (!message.request_id) {
+      return false;
+    }
+
+    const pending = this.pendingWsRequests.get(message.request_id);
+    if (!pending) {
+      return false;
+    }
+
+    this.pendingWsRequests.delete(message.request_id);
+    pending.reject(new Error(`${message.code}: ${message.message}`));
+    return true;
+  }
+
+  private rejectPendingWsRequests(error: Error): void {
+    for (const [requestId, pending] of this.pendingWsRequests.entries()) {
+      this.pendingWsRequests.delete(requestId);
+      pending.reject(error);
+    }
+  }
+
+  private ensureWsReadyPromise(): void {
+    if (this.wsReady) {
+      return;
+    }
+
+    this.wsReady = new Promise<void>((resolve, reject) => {
+      this.resolveWsReady = resolve;
+      this.rejectWsReady = reject;
+    });
+  }
+
+  private resolveWsReadyPromise(): void {
+    this.resolveWsReady?.();
+    this.resolveWsReady = null;
+    this.rejectWsReady = null;
+    this.wsReady = Promise.resolve();
+  }
+
+  private rejectWsReadyPromise(error: Error): void {
+    if (this.wsReady && this.rejectWsReady) {
+      this.rejectWsReady(error);
+    }
+
+    this.wsReady = null;
+    this.resolveWsReady = null;
+    this.rejectWsReady = null;
   }
 
   private toRegisterScheduleRequest(
