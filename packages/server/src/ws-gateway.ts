@@ -2,7 +2,12 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { nanoid } from "nanoid";
 import { WebSocket, WebSocketServer } from "ws";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import {
+  apiKeys,
+  schedules,
+  wsBufferedTicks,
+} from "./db/schema.js";
 import type {
   WsMessage,
   WsTickMessage,
@@ -10,7 +15,6 @@ import type {
   WsRegisterScheduleMessage,
   WsCancelScheduleMessage,
 } from "@relaycron/types";
-import { apiKeys } from "./db/schema.js";
 import { hashKey } from "./middleware/auth.js";
 import {
   cancelScheduleRecord,
@@ -71,7 +75,7 @@ export class RelaycronWsGateway implements TickDispatcher {
   deliverTick(request: TickDispatchRequest): void {
     const tick: WsTickMessage = {
       type: "tick",
-      event_id: nanoid(),
+      event_id: request.executionId,
       schedule_id: request.scheduleId,
       schedule_name: request.scheduleName,
       scheduled_for: request.scheduledFor,
@@ -79,6 +83,7 @@ export class RelaycronWsGateway implements TickDispatcher {
       execution_id: request.executionId,
       payload: request.payload,
     };
+    void this.persistBufferedTick(request, tick);
 
     const buffered = this.bufferedTicks.get(request.apiKeyId) ?? [];
     buffered.push({
@@ -203,7 +208,7 @@ export class RelaycronWsGateway implements TickDispatcher {
     this.sessionsByApiKeyId.set(key.id, sessions);
 
     this.startHeartbeat(session);
-    const replayQueue = this.getReplayQueue(key.id, message.last_event_id);
+    const replayQueue = await this.getReplayQueue(key.id, message.last_event_id);
 
     this.send(session.ws, {
       type: "hello_ok",
@@ -273,15 +278,15 @@ export class RelaycronWsGateway implements TickDispatcher {
     });
   }
 
-  private getReplayQueue(
+  private async getReplayQueue(
     apiKeyId: string,
     lastEventId?: string
-  ): BufferedTick[] {
+  ): Promise<BufferedTick[]> {
     if (!lastEventId) {
       return [];
     }
 
-    const buffered = this.bufferedTicks.get(apiKeyId) ?? [];
+    const buffered = await this.loadBufferedTicks(apiKeyId);
     if (buffered.length === 0) {
       return [];
     }
@@ -294,6 +299,76 @@ export class RelaycronWsGateway implements TickDispatcher {
       : 0;
     const pending = buffered.slice(startIndex);
     return this.coalesceReplayTicks(pending);
+  }
+
+  private async loadBufferedTicks(apiKeyId: string): Promise<BufferedTick[]> {
+    const rows = await this.db
+      .select({
+        eventId: wsBufferedTicks.event_id,
+        scheduleId: wsBufferedTicks.schedule_id,
+        scheduleName: wsBufferedTicks.schedule_name,
+        scheduledFor: wsBufferedTicks.scheduled_for,
+        occurredAt: wsBufferedTicks.occurred_at,
+        payload: wsBufferedTicks.payload,
+        coalesceMissedTicks: wsBufferedTicks.coalesce_missed_ticks,
+        sequence: wsBufferedTicks.created_at,
+      })
+      .from(wsBufferedTicks)
+      .where(eq(wsBufferedTicks.api_key_id, apiKeyId))
+      .orderBy(desc(wsBufferedTicks.created_at))
+      .limit(MAX_BUFFERED_TICKS)
+      .all();
+
+    const durable = rows
+      .reverse()
+      .map((row, index) => ({
+        sequence: index + 1,
+        coalesceMissedTicks: row.coalesceMissedTicks,
+        message: {
+          type: "tick" as const,
+          event_id: row.eventId,
+          schedule_id: row.scheduleId,
+          schedule_name: row.scheduleName,
+          scheduled_for: row.scheduledFor,
+          occurred_at: row.occurredAt,
+          execution_id: row.eventId,
+          payload: JSON.parse(row.payload),
+        },
+      }));
+
+    if (durable.length > 0) {
+      return durable;
+    }
+
+    return this.bufferedTicks.get(apiKeyId) ?? [];
+  }
+
+  private async persistBufferedTick(
+    request: TickDispatchRequest,
+    tick: WsTickMessage,
+  ): Promise<void> {
+    await this.db.insert(wsBufferedTicks).values({
+      event_id: tick.event_id,
+      api_key_id: request.apiKeyId,
+      schedule_id: request.scheduleId,
+      schedule_name: request.scheduleName,
+      scheduled_for: request.scheduledFor,
+      occurred_at: request.occurredAt,
+      payload: JSON.stringify(request.payload ?? null),
+      coalesce_missed_ticks: request.coalesceMissedTicks,
+      created_at: request.occurredAt,
+    });
+
+    const retained = await this.db
+      .select({ eventId: wsBufferedTicks.event_id })
+      .from(wsBufferedTicks)
+      .where(eq(wsBufferedTicks.api_key_id, request.apiKeyId))
+      .orderBy(desc(wsBufferedTicks.created_at))
+      .all();
+
+    for (const row of retained.slice(MAX_BUFFERED_TICKS)) {
+      await this.db.delete(wsBufferedTicks).where(eq(wsBufferedTicks.event_id, row.eventId));
+    }
   }
 
   private coalesceReplayTicks(entries: BufferedTick[]): BufferedTick[] {

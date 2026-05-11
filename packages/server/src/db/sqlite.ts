@@ -65,6 +65,21 @@ export function createDatabase(dbPath?: string) {
 
     CREATE INDEX IF NOT EXISTS idx_executions_schedule_id ON executions(schedule_id);
     CREATE INDEX IF NOT EXISTS idx_executions_started_at ON executions(started_at);
+
+    CREATE TABLE IF NOT EXISTS ws_buffered_ticks (
+      event_id TEXT PRIMARY KEY,
+      api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+      schedule_id TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+      schedule_name TEXT NOT NULL,
+      scheduled_for TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      coalesce_missed_ticks TEXT NOT NULL CHECK (coalesce_missed_ticks IN ('none', 'fire-once')),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ws_buffered_ticks_api_key_id ON ws_buffered_ticks(api_key_id);
+    CREATE INDEX IF NOT EXISTS idx_ws_buffered_ticks_created_at ON ws_buffered_ticks(created_at);
     CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
   `);
 
