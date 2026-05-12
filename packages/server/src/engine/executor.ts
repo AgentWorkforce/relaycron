@@ -86,6 +86,7 @@ function getBackoffDelayMs(
   const baseDelay = retryConfig.initialBackoffMs *
     retryConfig.backoffMultiplier ** (failedAttemptCount - 1);
   const jitterRatio = 0.2;
+  // Add-only jitter: retry delays stay within [baseDelay, baseDelay * 1.2].
   const jitter = baseDelay * jitterRatio * Math.random();
   return Math.round(baseDelay + jitter);
 }

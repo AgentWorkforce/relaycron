@@ -61,6 +61,10 @@ export const CreateScheduleRequest = z.object({
 });
 export type CreateScheduleRequest = z.infer<typeof CreateScheduleRequest>;
 
+/**
+ * Plain string schedules are parsed by the server in a deterministic order:
+ * first as an ISO datetime, then as a cron expression if datetime parsing fails.
+ */
 export const RegisterScheduleSpec = z.union([
   z.string().min(1).max(128),
   z.object({
@@ -201,6 +205,7 @@ export interface WsHelloOkMessage {
   type: "hello_ok";
   agent_id: string;
   replayed: number;
+  replay_incomplete?: boolean;
   heartbeat_interval_ms: number;
 }
 

@@ -72,7 +72,7 @@ export class RelaycronWsGateway implements TickDispatcher {
     });
   }
 
-  deliverTick(request: TickDispatchRequest): void {
+  async deliverTick(request: TickDispatchRequest): Promise<void> {
     const tick: WsTickMessage = {
       type: "tick",
       event_id: request.executionId,
@@ -221,12 +221,16 @@ export class RelaycronWsGateway implements TickDispatcher {
     this.sessionsByApiKeyId.set(key.id, sessions);
 
     this.startHeartbeat(session);
-    const replayQueue = await this.getReplayQueue(key.id, message.last_event_id);
+    const { pending: replayQueue, replayIncomplete } = await this.getReplayQueue(
+      key.id,
+      message.last_event_id
+    );
 
     this.send(session.ws, {
       type: "hello_ok",
       agent_id: key.id,
       replayed: replayQueue.length,
+      replay_incomplete: replayIncomplete,
       heartbeat_interval_ms: HEARTBEAT_INTERVAL_MS,
     });
     for (const entry of replayQueue) {
@@ -294,24 +298,28 @@ export class RelaycronWsGateway implements TickDispatcher {
   private async getReplayQueue(
     apiKeyId: string,
     lastEventId?: string
-  ): Promise<BufferedTick[]> {
+  ): Promise<{ pending: BufferedTick[]; replayIncomplete: boolean }> {
     if (!lastEventId) {
-      return [];
+      return { pending: [], replayIncomplete: false };
     }
 
     const buffered = await this.loadBufferedTicks(apiKeyId);
     if (buffered.length === 0) {
-      return [];
+      return { pending: [], replayIncomplete: false };
     }
 
-    const startIndex = lastEventId
-      ? Math.max(
-          0,
-          buffered.findIndex((entry) => entry.message.event_id === lastEventId) + 1
-        )
-      : 0;
-    const pending = buffered.slice(startIndex);
-    return this.coalesceReplayTicks(pending);
+    const cursorIndex = buffered.findIndex(
+      (entry) => entry.message.event_id === lastEventId
+    );
+    if (cursorIndex === -1) {
+      return { pending: [], replayIncomplete: true };
+    }
+
+    const pending = buffered.slice(cursorIndex + 1);
+    return {
+      pending: this.coalesceReplayTicks(pending),
+      replayIncomplete: false,
+    };
   }
 
   private async loadBufferedTicks(apiKeyId: string): Promise<BufferedTick[]> {

@@ -80,6 +80,7 @@ test("register -> tick -> deliver works over the in-memory websocket gateway", a
     type: "hello_ok",
     agent_id: storedKey.id,
     replayed: 0,
+    replay_incomplete: false,
     heartbeat_interval_ms: 25_000,
   });
 

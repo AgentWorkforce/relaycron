@@ -136,7 +136,7 @@ export class LocalScheduler implements Scheduler {
           "websocket",
           executionResult
         );
-        this.tickDispatcher.deliverTick({
+        await this.tickDispatcher.deliverTick({
           apiKeyId: schedule.api_key_id,
           scheduleId: schedule.id,
           scheduleName: schedule.name,

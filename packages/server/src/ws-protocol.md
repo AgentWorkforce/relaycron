@@ -176,11 +176,13 @@ Sent after a successful `client_hello`.
   "type": "hello_ok",
   "agent_id": "api_key_row_id",
   "replayed": 0,
+  "replay_incomplete": false,
   "heartbeat_interval_ms": 25000
 }
 ```
 
 - `replayed` is the count of retained `tick` events that will be replayed immediately after the hello response.
+- `replay_incomplete` is `true` when the requested `last_event_id` is no longer retained, so the server could not safely resume replay from that cursor.
 
 ### `schedule_registered`
 

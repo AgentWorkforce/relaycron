@@ -5,6 +5,9 @@
     "paths": {
       "@relaycron/types": [
         "./packages/types/src/index.ts"
+      ],
+      "@relaycron/sdk": [
+        "./packages/sdk/src/index.ts"
       ]
     }
   }

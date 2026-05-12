@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   Schedule,
   Execution,
@@ -404,7 +406,7 @@ export class AgentCron {
       throw new Error("WebSocket is not connected");
     }
 
-    const requestId = crypto.randomUUID();
+    const requestId = randomUUID();
     const payload = { ...message, request_id: requestId } as TRequest;
 
     const responsePromise = new Promise<TResponse>((resolve, reject) => {

@@ -21,7 +21,7 @@ export interface TickDispatchRequest {
 }
 
 export interface TickDispatcher {
-  deliverTick(request: TickDispatchRequest): void;
+  deliverTick(request: TickDispatchRequest): Promise<void>;
 }
 
 export interface AuthContext {
