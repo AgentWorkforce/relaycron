@@ -57,3 +57,21 @@ export const executions = sqliteTable("executions", {
   error: text("error"),
   duration_ms: integer("duration_ms"),
 });
+
+export const wsBufferedTicks = sqliteTable("ws_buffered_ticks", {
+  event_id: text("event_id").primaryKey(),
+  api_key_id: text("api_key_id")
+    .notNull()
+    .references(() => apiKeys.id, { onDelete: "cascade" }),
+  schedule_id: text("schedule_id")
+    .notNull()
+    .references(() => schedules.id, { onDelete: "cascade" }),
+  schedule_name: text("schedule_name").notNull(),
+  scheduled_for: text("scheduled_for").notNull(),
+  occurred_at: text("occurred_at").notNull(),
+  payload: text("payload").notNull(),
+  coalesce_missed_ticks: text("coalesce_missed_ticks", {
+    enum: ["none", "fire-once"],
+  }).notNull(),
+  created_at: text("created_at").notNull(),
+});

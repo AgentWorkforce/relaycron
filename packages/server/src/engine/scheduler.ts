@@ -5,20 +5,26 @@ import {
   recordExecution,
   advanceSchedule,
 } from "./executor.js";
-import type { Database, Scheduler } from "../types.js";
+import type { Database, Scheduler, TickDispatcher } from "../types.js";
 import type { RetryConfig } from "./executor.js";
 
 export class LocalScheduler implements Scheduler {
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private db: Database;
+  private tickDispatcher: TickDispatcher | null;
   private RETRY_CONFIG: RetryConfig = {
     maxAttempts: 3,
     initialBackoffMs: 1000,
     backoffMultiplier: 5,
   };
 
-  constructor(db: Database) {
+  constructor(db: Database, tickDispatcher?: TickDispatcher) {
     this.db = db;
+    this.tickDispatcher = tickDispatcher ?? null;
+  }
+
+  setTickDispatcher(tickDispatcher: TickDispatcher): void {
+    this.tickDispatcher = tickDispatcher;
   }
 
   setAlarm(scheduleId: string, runAt: string): void {
@@ -69,31 +75,81 @@ export class LocalScheduler implements Scheduler {
     }
 
     const payload = JSON.parse(schedule.payload);
+    const transportConfig = JSON.parse(schedule.transport_config) as
+      | {
+          url: string;
+          headers?: Record<string, string>;
+          timeout_ms?: number;
+        }
+      | {
+          channel?: string;
+          coalesce_missed_ticks?: "none" | "fire-once";
+        };
+    const scheduledFor = schedule.next_run_at ?? new Date().toISOString();
+    const startedAt = Date.now();
+    let executionResult;
+    let executionId: string | null = null;
 
     if (schedule.transport_type === "webhook") {
-      const config = JSON.parse(schedule.transport_config) as {
+      const config = transportConfig as {
         url: string;
         headers?: Record<string, string>;
         timeout_ms?: number;
       };
 
-      const result = await executeWebhookWithRetry(
+      executionResult = await executeWebhookWithRetry(
         config.url,
         payload,
         config.headers ?? {},
         config.timeout_ms ?? 10000,
         this.RETRY_CONFIG
       );
-
-      await recordExecution(this.db, scheduleId, "webhook", result);
+      executionId = await recordExecution(
+        this.db,
+        scheduleId,
+        "webhook",
+        executionResult
+      );
     } else {
-      // WebSocket transport not supported in local scheduler
-      await recordExecution(this.db, scheduleId, "websocket", {
-        status: "failure",
-        error: "WebSocket transport is not supported in local scheduler mode",
-        duration_ms: 0,
-        attempt_count: 1,
-      });
+      if (!this.tickDispatcher) {
+        executionResult = {
+          status: "failure" as const,
+          error: "WebSocket transport is not configured on this relaycron server",
+          duration_ms: Date.now() - startedAt,
+          attempt_count: 1,
+        };
+        executionId = await recordExecution(
+          this.db,
+          scheduleId,
+          "websocket",
+          executionResult
+        );
+      } else {
+        executionResult = {
+          status: "success" as const,
+          duration_ms: Date.now() - startedAt,
+          attempt_count: 1,
+        };
+        executionId = await recordExecution(
+          this.db,
+          scheduleId,
+          "websocket",
+          executionResult
+        );
+        await this.tickDispatcher.deliverTick({
+          apiKeyId: schedule.api_key_id,
+          scheduleId: schedule.id,
+          scheduleName: schedule.name,
+          executionId,
+          payload,
+          scheduledFor,
+          occurredAt: new Date().toISOString(),
+          coalesceMissedTicks:
+            (transportConfig as {
+              coalesce_missed_ticks?: "none" | "fire-once";
+            }).coalesce_missed_ticks ?? "none",
+        });
+      }
     }
 
     const nextRunAt = await advanceSchedule(
