@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RelaycronWsGateway } from "../packages/server/dist/ws-gateway.js";
+// Import from source so the test exercises live behavior, not stale dist
+// output. The package's tsconfig + node loader handle the .ts extension.
+import { RelaycronWsGateway } from "../packages/server/src/ws-gateway.js";
 
 class FakeSocket {
   readyState = 1;

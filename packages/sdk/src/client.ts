@@ -339,11 +339,36 @@ export class AgentCron {
       return;
     }
 
+    // If a reconnect cycle is in flight (close handler nulled wsReady, but
+    // shouldReconnect kept the lifecycle alive), wait for the next attempt
+    // to install a fresh wsReady promise instead of throwing "Call connect()
+    // first" — that error is correct only when nothing has ever called
+    // connect().
+    if (!this.wsReady && this.shouldReconnect) {
+      await this.waitForNextReconnectAttempt();
+      if (!this.wsReady) {
+        // Reconnection gave up (max attempts reached) — surface that.
+        throw new Error("WebSocket connection lost and reconnection failed");
+      }
+    }
+
     if (!this.wsReady) {
       throw new Error("WebSocket connection has not been started. Call connect() first.");
     }
 
     await this.wsReady;
+  }
+
+  private async waitForNextReconnectAttempt(): Promise<void> {
+    // Poll briefly for openWebSocket() to set a fresh wsReady. Bounded by
+    // the next reconnect delay (max 30s + jitter) — same bound used by
+    // maybeReconnect() so we don't out-wait it.
+    const deadline = Date.now() + 31_000;
+    while (Date.now() < deadline) {
+      if (this.wsReady) return;
+      if (!this.shouldReconnect) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
   async registerViaWebSocket(
