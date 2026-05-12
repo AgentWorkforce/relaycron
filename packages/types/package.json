@@ -1,6 +1,6 @@
 {
   "name": "@relaycron/types",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Shared Zod schemas and TypeScript types for AgentCron",
   "type": "module",
   "main": "dist/index.js",
