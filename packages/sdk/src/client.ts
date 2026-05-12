@@ -485,6 +485,10 @@ export class AgentCron {
     this.wsReady = null;
     this.resolveWsReady = null;
     this.rejectWsReady = null;
+
+    if (this.shouldReconnect) {
+      this.ensureWsReadyPromise();
+    }
   }
 
   private toRegisterScheduleRequest(

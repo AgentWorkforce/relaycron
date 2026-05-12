@@ -83,7 +83,9 @@ export class RelaycronWsGateway implements TickDispatcher {
       execution_id: request.executionId,
       payload: request.payload,
     };
-    void this.persistBufferedTick(request, tick);
+    void this.persistBufferedTick(request, tick).catch(() => {
+      // Delivery still proceeds through the in-memory buffer when durable buffering fails.
+    });
 
     const buffered = this.bufferedTicks.get(request.apiKeyId) ?? [];
     buffered.push({
@@ -149,33 +151,44 @@ export class RelaycronWsGateway implements TickDispatcher {
       return;
     }
 
-    if (!session.apiKeyId) {
-      if (message.type !== "client_hello") {
-        this.sendError(
-          session.ws,
-          "unauthorized",
-          "Send client_hello before any other websocket command"
-        );
+    try {
+      if (!session.apiKeyId) {
+        if (message.type !== "client_hello") {
+          this.sendError(
+            session.ws,
+            "unauthorized",
+            "Send client_hello before any other websocket command"
+          );
+          return;
+        }
+
+        await this.handleClientHello(session, message);
         return;
       }
 
-      await this.handleClientHello(session, message);
-      return;
-    }
-
-    switch (message.type) {
-      case "register_schedule":
-        await this.handleRegisterSchedule(session, message);
-        break;
-      case "cancel_schedule":
-        await this.handleCancelSchedule(session, message);
-        break;
-      default:
+      switch (message.type) {
+        case "register_schedule":
+          await this.handleRegisterSchedule(session, message);
+          break;
+        case "cancel_schedule":
+          await this.handleCancelSchedule(session, message);
+          break;
+        default:
+          this.sendError(
+            session.ws,
+            "unsupported_message",
+            `Unsupported message type: ${message.type}`
+          );
+      }
+    } catch {
+      if (session.ws.readyState === WebSocket.OPEN) {
         this.sendError(
           session.ws,
-          "unsupported_message",
-          `Unsupported message type: ${message.type}`
+          "internal_error",
+          "Internal websocket error"
         );
+      }
+      session.ws.close(1011, "Internal websocket error");
     }
   }
 
@@ -183,7 +196,7 @@ export class RelaycronWsGateway implements TickDispatcher {
     session: Session,
     message: WsClientHelloMessage
   ): Promise<void> {
-    if (!message.api_key.startsWith("ac_")) {
+    if (typeof message.api_key !== "string" || !message.api_key.startsWith("ac_")) {
       this.sendError(session.ws, "unauthorized", "Invalid API key format");
       session.ws.close(4003, "Unauthorized");
       return;

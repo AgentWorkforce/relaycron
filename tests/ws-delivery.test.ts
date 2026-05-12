@@ -4,11 +4,17 @@ import test from "node:test";
 import { RelaycronWsGateway } from "../packages/server/dist/ws-gateway.js";
 
 class FakeSocket {
-  readonly readyState = 1;
+  readyState = 1;
   readonly sent: unknown[] = [];
+  closed: { code: number; reason: string } | null = null;
 
   send(payload: string): void {
     this.sent.push(JSON.parse(payload));
+  }
+
+  close(code: number, reason: string): void {
+    this.readyState = 3;
+    this.closed = { code, reason };
   }
 }
 
@@ -26,10 +32,20 @@ test("register -> tick -> deliver works over the in-memory websocket gateway", a
             where() {
               return {
                 limit: async () => [{ id: storedKey.id }],
+                orderBy() {
+                  return {
+                    all: async () => [],
+                  };
+                },
               };
             },
           };
         },
+      };
+    },
+    insert() {
+      return {
+        values: async () => {},
       };
     },
   };
@@ -107,4 +123,43 @@ test("register -> tick -> deliver works over the in-memory websocket gateway", a
   );
   assert.equal(tickMessage.schedule_id, schedule.id);
   assert.equal(tickMessage.scheduled_for, scheduledFor);
+});
+
+test("malformed client_hello frames are rejected without throwing", async () => {
+  const fakeDb = {
+    select() {
+      throw new Error("api key lookup should not run for malformed hello");
+    },
+  };
+
+  const fakeScheduler = {
+    setAlarm() {},
+    cancelAlarm() {},
+  };
+
+  const wsGateway = new RelaycronWsGateway(fakeDb as never, fakeScheduler);
+  const socket = new FakeSocket();
+  const session = {
+    id: "sess_malformed_hello",
+    ws: socket,
+    apiKeyId: null as string | null,
+    heartbeatTimer: null as ReturnType<typeof setInterval> | null,
+  };
+
+  await wsGateway["handleMessage"](
+    session as never,
+    JSON.stringify({ type: "client_hello" }),
+  );
+
+  assert.deepEqual(socket.sent, [
+    {
+      type: "error",
+      code: "unauthorized",
+      message: "Invalid API key format",
+    },
+  ]);
+  assert.deepEqual(socket.closed, {
+    code: 4003,
+    reason: "Unauthorized",
+  });
 });
