@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+// Imports the built output; the root `npm test` script runs `turbo build`
+// first, so dist is fresh.
 import {
   CreateScheduleRequest,
   ListSchedulesQuery,

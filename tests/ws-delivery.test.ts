@@ -3,7 +3,8 @@ import test from "node:test";
 
 // Import the built output (like the other root tests): Node's type stripping
 // does not remap the source tree's `.js` import specifiers to `.ts`, so the
-// server source cannot be loaded directly. `npm test` builds first via turbo.
+// server source cannot be loaded directly. The root `npm test` script runs
+// `turbo build` first, so dist is fresh.
 import { RelaycronWsGateway } from "../packages/server/dist/ws-gateway.js";
 
 class FakeSocket {
