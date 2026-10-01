@@ -47,3 +47,37 @@ test("legacy create request without payload stores an empty object payload", asy
   assert.equal(typeof record.payload, "string");
   assert.deepEqual(alarms, [record.id]);
 });
+
+test("legacy create request preserves an explicit null payload", async () => {
+  const parsed = parseScheduleRequest({
+    name: "legacy-null-payload",
+    schedule_type: "cron",
+    cron_expression: "*/5 * * * *",
+    payload: null,
+    transport: { type: "websocket" },
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.data.payload, null);
+
+  const inserted: Array<Record<string, unknown>> = [];
+  const fakeDb = {
+    insert() {
+      return {
+        values: async (row: Record<string, unknown>) => {
+          inserted.push(row);
+        },
+      };
+    },
+  };
+
+  await createScheduleRecord(
+    fakeDb as never,
+    { setAlarm() {}, cancelAlarm() {} },
+    "key_legacy",
+    parsed.data
+  );
+
+  assert.equal(inserted.length, 1);
+  assert.equal(inserted[0]?.payload, "null");
+});
