@@ -135,7 +135,7 @@ jobs:
                 for (const depType of ['dependencies', 'devDependencies']) {
                   for (const dep of Object.keys(pkg[depType] || {})) {
                     if (dep.startsWith('@relaycron/')) {
-                      pkg[depType][dep] = version;
+                      pkg[depType][dep] = '^' + version;
                     }
                   }
                 }

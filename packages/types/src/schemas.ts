@@ -26,7 +26,7 @@ export type ExecutionStatus = z.infer<typeof ExecutionStatus>;
 
 export const WebhookTransportConfig = z.object({
   url: z.string().url(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   timeout_ms: z.number().int().min(1000).max(30000).default(10000),
 });
 export type WebhookTransportConfig = z.infer<typeof WebhookTransportConfig>;
@@ -55,9 +55,9 @@ export const CreateScheduleRequest = z.object({
   cron_expression: z.string().max(128).optional(),
   scheduled_at: z.string().datetime().optional(),
   timezone: z.string().default("UTC"),
-  payload: z.unknown(),
+  payload: z.unknown().optional(),
   transport: TransportConfig,
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateScheduleRequest = z.infer<typeof CreateScheduleRequest>;
 
@@ -92,7 +92,7 @@ export const RegisterScheduleRequest = z.object({
       ...WebsocketTransportConfig.shape,
     }),
   ]),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type RegisterScheduleRequest = z.infer<typeof RegisterScheduleRequest>;
 
@@ -105,7 +105,7 @@ export const UpdateScheduleRequest = z.object({
   payload: z.unknown().optional(),
   transport: TransportConfig.optional(),
   status: z.enum(["active", "paused"]).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type UpdateScheduleRequest = z.infer<typeof UpdateScheduleRequest>;
 

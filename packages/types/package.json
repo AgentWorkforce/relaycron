@@ -32,7 +32,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "zod": "^3.24.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

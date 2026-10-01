@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// Import from source so the test exercises live behavior, not stale dist
-// output. The package's tsconfig + node loader handle the .ts extension.
-import { RelaycronWsGateway } from "../packages/server/src/ws-gateway.js";
+// Import the built output (like the other root tests): Node's type stripping
+// does not remap the source tree's `.js` import specifiers to `.ts`, so the
+// server source cannot be loaded directly. `npm test` builds first via turbo.
+import { RelaycronWsGateway } from "../packages/server/dist/ws-gateway.js";
 
 class FakeSocket {
   readyState = 1;
@@ -65,7 +66,7 @@ test("register -> tick -> deliver works over the in-memory websocket gateway", a
     apiKeyId: null as string | null,
     heartbeatTimer: null as ReturnType<typeof setInterval> | null,
   };
-  wsGateway["sessions"].set(session.id, session);
+  wsGateway["sessions"].set(session.id, session as never);
   t.after(() => {
     if (session.heartbeatTimer) {
       clearInterval(session.heartbeatTimer);
