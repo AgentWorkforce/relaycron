@@ -108,7 +108,7 @@ function normalizeLegacyRequest(
       cron_expression: data.cron_expression,
       scheduled_at: data.scheduled_at,
       timezone: data.timezone,
-      payload: data.payload,
+      payload: data.payload === undefined ? {} : data.payload,
       transport:
         data.transport.type === "webhook"
           ? {
