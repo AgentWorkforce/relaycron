@@ -199,7 +199,7 @@ jobs:
           path: .
 
       - name: Update npm for OIDC support
-        run: npm install -g npm@latest
+        run: npm install -g npm@11  # npm 12 requires Node >=22.22.2; 11.5.1+ is enough for OIDC
 
       - name: Dry run check
         if: github.event.inputs.dry_run == 'true'
@@ -237,7 +237,7 @@ jobs:
           path: .
 
       - name: Update npm for OIDC support
-        run: npm install -g npm@latest
+        run: npm install -g npm@11  # npm 12 requires Node >=22.22.2; 11.5.1+ is enough for OIDC
 
       - name: Resolve package path
         id: resolve-package
