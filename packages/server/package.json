@@ -33,7 +33,7 @@
     "@hono/node-server": "^1.13.0",
     "better-sqlite3": "^11.0.0",
     "cron-parser": "^5.0.0",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.7.0",
     "nanoid": "^5.0.9",
     "ws": "^8.20.0"
