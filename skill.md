@@ -14,10 +14,11 @@ npm install @relaycron/sdk
 ```bash
 curl -X POST https://api.agentcron.dev/v1/auth/keys \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CREDENTIAL" \
   -d '{"name": "my-agent"}'
 ```
 
-Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved again.
+`$CREDENTIAL` is an existing `ac_` API key (or the operator's admin secret); unauthenticated requests get `401`. Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved again.
 
 ### 2. Create a Schedule
 
