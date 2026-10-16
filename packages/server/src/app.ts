@@ -1,12 +1,18 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createDbMiddleware } from "./middleware/db.js";
-import authRouter from "./routes/auth.js";
+import { createAuthRouter, type AuthRouterOptions } from "./routes/auth.js";
 import { createSchedulesRouter } from "./routes/schedules.js";
 import executionsRouter from "./routes/executions.js";
 import type { Database, Scheduler } from "./types.js";
 
-export function createApp(db: Database, scheduler: Scheduler): Hono {
+export type CreateAppOptions = AuthRouterOptions;
+
+export function createApp(
+  db: Database,
+  scheduler: Scheduler,
+  options: CreateAppOptions = {}
+): Hono {
   const app = new Hono();
 
   app.use("*", cors());
@@ -18,7 +24,7 @@ export function createApp(db: Database, scheduler: Scheduler): Hono {
   );
 
   // Routes
-  app.route("/v1/auth", authRouter);
+  app.route("/v1/auth", createAuthRouter(options));
   app.route("/v1/schedules", createSchedulesRouter(scheduler));
   app.route("/v1", executionsRouter);
 
@@ -46,3 +52,4 @@ export function createApp(db: Database, scheduler: Scheduler): Hono {
 }
 
 export type { Database, Scheduler } from "./types.js";
+export type { AuthRouterOptions } from "./routes/auth.js";

@@ -1,10 +1,29 @@
 import { createMiddleware } from "hono/factory";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { apiKeys } from "../db/schema.js";
+import type { Database } from "../types.js";
 
 export function hashKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
+}
+
+/** Constant-time string comparison over SHA-256 digests (length-independent). */
+export function secretsMatch(provided: string, expected: string): boolean {
+  const a = createHash("sha256").update(provided).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+/** Looks up a raw `ac_` API key; returns the stored row or undefined. */
+export async function findApiKey(db: Database, token: string) {
+  if (!token.startsWith("ac_")) return undefined;
+  const [key] = await db
+    .select()
+    .from(apiKeys)
+    .where(eq(apiKeys.key_hash, hashKey(token)))
+    .limit(1);
+  return key;
 }
 
 export const requireAuth = createMiddleware(async (c, next) => {
@@ -33,13 +52,8 @@ export const requireAuth = createMiddleware(async (c, next) => {
     );
   }
 
-  const keyHash = hashKey(token);
   const db = c.get("db");
-  const [key] = await db
-    .select()
-    .from(apiKeys)
-    .where(eq(apiKeys.key_hash, keyHash))
-    .limit(1);
+  const key = await findApiKey(db, token);
 
   if (!key) {
     return c.json(
