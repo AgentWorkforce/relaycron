@@ -6,3 +6,13 @@ dist/
 *.log
 .npm-cache/
 *.tsbuildinfo
+
+# Agent Relay runtime state and agent MCP configs: these can hold live workspace keys and agent tokens
+/.relay/
+/.agent-relay/
+/.agentworkforce/relay/
+/.mcp.json
+/.cursor/mcp.json
+/opencode.json
+/.gemini/
+/.codex/
