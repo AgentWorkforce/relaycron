@@ -1,4 +1,5 @@
 export { createApp } from "./app.js";
+export type { CreateAppOptions, AuthRouterOptions } from "./app.js";
 export { createDatabase } from "./db/sqlite.js";
 export * from "./db/schema.js";
 export {

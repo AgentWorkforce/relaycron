@@ -37,16 +37,18 @@ The server runs at `http://localhost:4007` with a SQLite database at `.relaycron
 Configure with environment variables:
 - `PORT` — server port (default: 4007)
 - `RELAYCRON_DB_PATH` — database file path (default: `.relaycron/relaycron.db`)
+- `RELAYCRON_ADMIN_SECRET` — operator secret allowed to mint API keys. Required to create the first key; unset means only an existing key can mint (a fresh database cannot mint any).
 
 ### Create an API Key
 
 ```bash
 curl -X POST http://localhost:4007/v1/auth/keys \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CREDENTIAL" \
   -d '{"name": "my-agent"}'
 ```
 
-Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved again.
+`$CREDENTIAL` is either `RELAYCRON_ADMIN_SECRET` or an existing `ac_` API key; unauthenticated requests get `401`. Save the `api_key` from the response (starts with `ac_`). It cannot be retrieved again.
 
 ### Create a Schedule
 
@@ -176,7 +178,7 @@ await cron.cancelById(wsSchedule.id);
 | Method   | Path                                  | Auth     | Description         |
 | -------- | ------------------------------------- | -------- | ------------------- |
 | `GET`    | `/health`                             | No       | Health check        |
-| `POST`   | `/v1/auth/keys`                      | No       | Create API key      |
+| `POST`   | `/v1/auth/keys`                      | Yes¹     | Create API key      |
 | `POST`   | `/v1/schedules`                      | Required | Create schedule     |
 | `GET`    | `/v1/schedules`                       | Required | List schedules      |
 | `GET`    | `/v1/schedules/:id`                   | Required | Get schedule        |
@@ -186,6 +188,8 @@ await cron.cancelById(wsSchedule.id);
 | `GET`    | `/v1/schedules/:id/executions`        | Required | List executions     |
 | `GET`    | `/v1/schedules/:id/executions/:eid`   | Required | Get execution       |
 | `GET`    | `/v1/ws`                              | WS auth  | WebSocket endpoint  |
+
+¹ `Authorization: Bearer <RELAYCRON_ADMIN_SECRET or existing ac_ key>`.
 
 ## WebSocket Protocol
 

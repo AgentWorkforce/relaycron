@@ -39,7 +39,7 @@ npm run db:migrate   # Apply migrations locally
 
 ## API Routes
 
-- `POST /v1/auth/keys` - Create API key (no auth)
+- `POST /v1/auth/keys` - Create API key (Bearer admin secret or existing `ac_` key)
 - `POST /v1/schedules` - Create schedule
 - `GET /v1/schedules` - List schedules
 - `GET /v1/schedules/:id` - Get schedule

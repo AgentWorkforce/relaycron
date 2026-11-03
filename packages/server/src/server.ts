@@ -12,7 +12,9 @@ schedulerWithTicks.setTickDispatcher(wsGateway);
 await schedulerWithTicks.restoreAlarms();
 
 const port = Number(process.env.PORT) || 4007;
-const app = createApp(db, schedulerWithTicks);
+const app = createApp(db, schedulerWithTicks, {
+  adminSecret: process.env.RELAYCRON_ADMIN_SECRET,
+});
 const server = createAdaptorServer({ fetch: app.fetch, port });
 wsGateway.attach(server);
 
