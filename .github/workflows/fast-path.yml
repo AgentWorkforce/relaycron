@@ -24,8 +24,10 @@ on:
         required: true
 permissions:
   contents: read
+# run_id keeps each dispatch in its own group: a ref-keyed group would let
+# a later dispatch cancel one that is still waiting for approval.
 concurrency:
-  group: fast-path-${{ inputs.ref }}
+  group: fast-path-${{ inputs.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 env:
   NPM_CONFIG_FUND: false
@@ -44,7 +46,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.14.0"
-          cache: npm
       - run: npm ci
       - name: Build (same order as publish.yml)
         run: |
@@ -68,7 +69,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.14.0"
-          cache: npm
       - run: npm ci
       - name: Set the fast version on every package
         id: version
