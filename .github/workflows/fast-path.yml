@@ -1,0 +1,135 @@
+# Fast path: check and package the relaycron npm packages on Blacksmith
+# runners, outside the shared GitHub-hosted queue. Anyone with write access
+# (people or agents) may start it; nothing runs until Khaliq approves the
+# fast-path environment.
+#
+# It builds the packages as publish.yml does and runs the root test suite,
+# then packs @relaycron/types, @relaycron/server and @relaycron/sdk at
+# <version>-fast.<sha7> (g<sha7> if the
+# short SHA is all digits) and uploads the tarballs as a workflow artifact. It
+# does not publish to npm: these packages use npm trusted publishing (OIDC)
+# bound to publish.yml, so only that workflow can publish. It never moves a
+# dist-tag, commits, tags or creates a release.
+name: fast-path
+run-name: fast-path ${{ inputs.ref }} (${{ inputs.reason }})
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to check (a PR branch is fine)
+        required: true
+        default: main
+      reason:
+        description: Why this needs the fast path
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: fast-path-${{ inputs.ref }}
+  cancel-in-progress: false
+env:
+  NPM_CONFIG_FUND: false
+jobs:
+  check:
+    environment: fast-path
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+      - run: npm ci
+      - name: Build (same order as publish.yml)
+        run: |
+          npm run build --workspace=packages/types
+          npm run build --workspace=packages/server
+          npm run build --workspace=packages/sdk
+      # The root tests run .ts files with plain `node --test`, which needs a
+      # Node with type stripping on by default.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm test
+
+  pack:
+    needs: check
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+      - run: npm ci
+      - name: Set the fast version on every package
+        id: version
+        env:
+          SHA: ${{ needs.check.outputs.sha }}
+        run: |
+          base=$(node -p "require('./package.json').version")
+          # A numeric prerelease identifier must not start with 0, so an
+          # all-digit short SHA gets a "g" prefix to stay valid SemVer.
+          id="${SHA:0:7}"
+          if [[ "$id" =~ ^[0-9]+$ ]]; then id="g$id"; fi
+          version="${base%%-*}-fast.$id"
+          # Same sync as publish.yml: every package and its internal
+          # @relaycron/* deps move to the new (prerelease, so exact) version.
+          VERSION="$version" node -e "
+            const fs = require('fs');
+            const version = process.env.VERSION;
+            for (const dir of ['packages/types', 'packages/server', 'packages/sdk']) {
+              const path = dir + '/package.json';
+              const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+              pkg.version = version;
+              for (const depType of ['dependencies', 'devDependencies']) {
+                for (const dep of Object.keys(pkg[depType] || {})) {
+                  if (dep.startsWith('@relaycron/')) pkg[depType][dep] = version;
+                }
+              }
+              fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+              console.log(pkg.name + ' -> ' + version);
+            }
+          "
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: |
+          npm run build --workspace=packages/types
+          npm run build --workspace=packages/server
+          npm run build --workspace=packages/sdk
+      - name: Pack
+        run: |
+          mkdir -p fast-tarballs
+          for dir in packages/types packages/server packages/sdk; do
+            (cd "$dir" && npm pack --ignore-scripts --pack-destination "$GITHUB_WORKSPACE/fast-tarballs")
+          done
+          ls -l fast-tarballs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relaycron-npm-fast-${{ needs.check.outputs.sha }}
+          path: fast-tarballs/*.tgz
+          if-no-files-found: error
+      - name: Summary
+        env:
+          REF: ${{ inputs.ref }}
+          SHA: ${{ needs.check.outputs.sha }}
+          REASON: ${{ inputs.reason }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "### relaycron fast path"
+            echo "- ref: \`$REF\` at \`$SHA\`"
+            echo "- reason: $REASON"
+            echo "- version: \`$VERSION\` (not published; npm uses trusted publishing via publish.yml)"
+            echo "- artifact: \`relaycron-npm-fast-$SHA\`"
+            for f in fast-tarballs/*.tgz; do echo "  - \`$(basename "$f")\`"; done
+            echo "- install: download the artifact, then run \`npm install ./*.tgz\` in its directory (the packages pin each other's unpublished fast version, so install them together)"
+          } >> "$GITHUB_STEP_SUMMARY"
