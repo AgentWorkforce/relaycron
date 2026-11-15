@@ -75,7 +75,11 @@ jobs:
           SHA: ${{ needs.check.outputs.sha }}
         run: |
           base=$(node -p "require('./package.json').version")
-          version="${base%%-*}-fast.${SHA:0:7}"
+          # A numeric prerelease identifier must not start with 0, so an
+          # all-digit short SHA gets a "g" prefix to stay valid SemVer.
+          id="${SHA:0:7}"
+          if [[ "$id" =~ ^[0-9]+$ ]]; then id="g$id"; fi
+          version="${base%%-*}-fast.$id"
           # Same sync as publish.yml: every package and its internal
           # @relaycron/* deps move to the new (prerelease, so exact) version.
           VERSION="$version" node -e "
@@ -126,4 +130,5 @@ jobs:
             echo "- version: \`$VERSION\` (not published; npm uses trusted publishing via publish.yml)"
             echo "- artifact: \`relaycron-npm-fast-$SHA\`"
             for f in fast-tarballs/*.tgz; do echo "  - \`$(basename "$f")\`"; done
+            echo "- install: download the artifact, then run \`npm install ./*.tgz\` in its directory (the packages pin each other's unpublished fast version, so install them together)"
           } >> "$GITHUB_STEP_SUMMARY"
